@@ -1,13 +1,19 @@
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { authApi } from '@/features/auth/api';
+import { setSessionHandlers, setTokens } from './http';
+import { isTokenExpired, userIdFromToken } from './jwt';
+import { clearQueryCache } from './query';
 import { storage } from './storage';
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, setAuthToken, setUnauthorizedHandler } from './api';
-import type { AuthUser } from './types';
+import type { AuthResponse, AuthUser } from './types';
 
 const SESSION_KEY = 'hotel-mgmt-session';
 const MANAGEMENT_ROLES = ['SuperAdmin', 'Admin', 'Manager'];
 
 interface Session {
   token: string;
+  /** Missing in sessions saved by app versions before refresh tokens */
+  refreshToken?: string;
+  refreshTokenExpiresAt?: string;
   user: AuthUser;
 }
 
@@ -27,70 +33,78 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function tokenPayload(token: string): Record<string, unknown> | null {
-  try {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')));
-  } catch {
-    return null;
+function toSession(auth: AuthResponse): Session {
+  return {
+    token: auth.token,
+    refreshToken: auth.refreshToken,
+    refreshTokenExpiresAt: auth.refreshTokenExpiresAt,
+    user: { id: userIdFromToken(auth.token), email: auth.email, fullName: auth.fullName, roles: auth.roles },
+  };
+}
+
+/** Whether a saved session can still be used, directly or by renewing it */
+function isUsable(session: Session): boolean {
+  if (session.refreshToken) {
+    return !session.refreshTokenExpiresAt || new Date(session.refreshTokenExpiresAt).getTime() > Date.now();
   }
-}
-
-// Reads the JWT's exp claim; unreadable tokens count as expired
-function isTokenExpired(token: string): boolean {
-  const exp = tokenPayload(token)?.exp;
-  return typeof exp !== 'number' || exp * 1000 <= Date.now();
-}
-
-// The API puts the user id in the NameIdentifier claim, which may be written short or long
-function userIdFromToken(token: string): string {
-  const payload = tokenPayload(token) ?? {};
-  const id =
-    payload.nameid ?? payload.sub ?? payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'];
-  return typeof id === 'string' ? id : '';
+  return !isTokenExpired(session.token);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [ready, setReady] = useState(false);
+  const sessionRef = useRef<Session | null>(null);
 
-  const logout = useCallback(async () => {
-    setAuthToken(null);
-    setUser(null);
-    await storage.remove(SESSION_KEY);
+  const save = useCallback(async (session: Session | null) => {
+    sessionRef.current = session;
+    setTokens(session ? { token: session.token, refreshToken: session.refreshToken } : null);
+    setUser(session?.user ?? null);
+    if (session) await storage.set(SESSION_KEY, JSON.stringify(session));
+    else await storage.remove(SESSION_KEY);
   }, []);
 
+  const endSession = useCallback(async () => {
+    await save(null);
+    await clearQueryCache();
+  }, [save]);
+
+  const logout = useCallback(async () => {
+    const refreshToken = sessionRef.current?.refreshToken;
+    await endSession();
+    // Best effort: the device has forgotten the session either way
+    if (refreshToken) authApi.logout(refreshToken).catch(() => undefined);
+  }, [endSession]);
+
   useEffect(() => {
-    setUnauthorizedHandler(() => void logout());
-    storage.get(SESSION_KEY)
-      .then((saved) => {
+    setSessionHandlers({
+      onRefreshed: (auth) => void save(toSession(auth)),
+      onEnded: () => void endSession(),
+    });
+
+    storage
+      .get(SESSION_KEY)
+      .then(async (saved) => {
         if (!saved) return;
         const session = JSON.parse(saved) as Session;
-        if (isTokenExpired(session.token)) return storage.remove(SESSION_KEY);
-        setAuthToken(session.token);
-        // Sessions saved by the first app version have no id
-        setUser({ ...session.user, id: userIdFromToken(session.token) });
+        if (!isUsable(session)) return storage.remove(SESSION_KEY);
+        // Sessions saved by the first app version have no user id
+        const id = session.user.id || userIdFromToken(session.token);
+        await save({ ...session, user: { ...session.user, id } });
       })
       .catch(() => undefined)
       .finally(() => setReady(true));
-    return () => setUnauthorizedHandler(null);
-  }, [logout]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const response = await api.login(email, password);
-    const session: Session = {
-      token: response.token,
-      user: {
-        id: userIdFromToken(response.token),
-        email: response.email,
-        fullName: response.fullName,
-        roles: response.roles,
-      },
-    };
-    setAuthToken(session.token);
-    setUser(session.user);
-    await storage.set(SESSION_KEY, JSON.stringify(session));
-  }, []);
+    return () => setSessionHandlers(null);
+  }, [save, endSession]);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const auth = await authApi.login(email, password);
+      await clearQueryCache();
+      await save(toSession(auth));
+    },
+    [save]
+  );
 
   const value = useMemo<AuthContextValue>(() => {
     const canManage = !!user?.roles.some((role) => MANAGEMENT_ROLES.includes(role));

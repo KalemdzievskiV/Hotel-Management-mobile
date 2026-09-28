@@ -1,10 +1,32 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from 'react-native';
-import { api } from '@/lib/api';
+import { Alert, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  Avatar,
+  Button,
+  Card,
+  Chip,
+  Divider,
+  ErrorState,
+  Icon,
+  KeyValue,
+  SectionHeader,
+  Sheet,
+  SkeletonList,
+  Text,
+  TextField,
+  useScreenStyles,
+  useToast,
+} from '@/components';
+import type { AndroidSymbol, IosSymbol } from '@/components/Icon';
+import { reservationsApi } from '@/features/reservations/api';
+import { StatusBadge } from '@/features/reservations/components';
+import { usePayments, useRecordPayment, useReservation, useReservationAction } from '@/features/reservations/hooks';
 import { useAuth } from '@/lib/auth';
-import { useApi } from '@/lib/useApi';
 import { formatMoney, formatServerTime, formatStay } from '@/lib/format';
+import { errorText } from '@/lib/http';
+import { usePullToRefresh } from '@/lib/query';
 import {
   Payment,
   PaymentMethod,
@@ -13,138 +35,214 @@ import {
   Reservation,
   ReservationStatus,
 } from '@/lib/types';
-import { Button, Chip, colors, ErrorMessage, Field, Loading, StatusBadge, styles } from '@/components/ui';
+import { makeStyles, radius, space, useTheme } from '@/theme';
 
 // The ways the front desk takes money in person
 const DESK_METHODS = [PaymentMethod.Cash, PaymentMethod.CreditCard, PaymentMethod.DebitCard, PaymentMethod.BankTransfer];
 
-async function loadReservation(id: number) {
-  const [reservation, payments] = await Promise.all([api.reservation(id), api.payments(id)]);
-  return { reservation, payments };
-}
-
 export default function ReservationScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: idParam } = useLocalSearchParams<{ id: string }>();
+  const id = Number(idParam);
   const { canManage } = useAuth();
-  const { data, setData, error, loading, refresh } = useApi(() => loadReservation(Number(id)), id);
-  const [busy, setBusy] = useState(false);
+  const screen = useScreenStyles();
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const toast = useToast();
+
+  const reservation = useReservation(id);
+  const payments = usePayments(id);
+  const action = useReservationAction(id);
   const [paying, setPaying] = useState(false);
+  const pull = usePullToRefresh(() => Promise.all([reservation.refetch(), payments.refetch()]));
 
-  if (loading) return <Loading />;
-  if (error || !data) return <ErrorMessage message={error ?? 'Not found'} onRetry={refresh} />;
-  const { reservation: r, payments } = data;
+  if (reservation.isPending) return <SkeletonList count={3} header={false} />;
+  if (!reservation.data) {
+    return <ErrorState message={errorText(reservation.error)} onRetry={() => void reservation.refetch()} />;
+  }
+  const r = reservation.data;
 
-  const run = async (action: () => Promise<Reservation>) => {
-    setBusy(true);
-    try {
-      setData({ ...data, reservation: await action() });
-    } catch (e) {
-      Alert.alert('Could not update', e instanceof Error ? e.message : 'Something went wrong');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const run = (call: () => Promise<Reservation>, done: string) =>
+    action.mutate(call, {
+      onSuccess: () => toast.show(done),
+      onError: (e) => Alert.alert('Could not update', errorText(e)),
+    });
 
   const confirmCheckOut = () => {
-    if (r.remainingAmount <= 0) return run(() => api.checkOut(r.id));
+    if (r.remainingAmount <= 0) return run(() => reservationsApi.checkOut(r.id), 'Checked out');
     Alert.alert('Balance still open', `${formatMoney(r.remainingAmount)} hasn't been paid yet. Check out anyway?`, [
       { text: 'Take payment first', style: 'cancel', onPress: () => setPaying(true) },
-      { text: 'Check out', onPress: () => run(() => api.checkOut(r.id)) },
+      { text: 'Check out', onPress: () => run(() => reservationsApi.checkOut(r.id), 'Checked out') },
     ]);
   };
 
   const confirmNoShow = () =>
     Alert.alert('Mark as no-show?', "The guest didn't arrive. The room is released.", [
       { text: 'Keep', style: 'cancel' },
-      { text: 'Mark no-show', style: 'destructive', onPress: () => run(() => api.noShow(r.id)) },
+      { text: 'Mark no-show', style: 'destructive', onPress: () => run(() => reservationsApi.noShow(r.id), 'Marked as no-show') },
     ]);
 
   const confirmCancel = () =>
-    Alert.alert('Cancel reservation?', 'The guest will lose this booking.', [
-      { text: 'Keep', style: 'cancel' },
-      { text: 'Cancel booking', style: 'destructive', onPress: () => run(() => api.cancel(r.id, 'Cancelled from mobile app')) },
-    ]);
+    Alert.alert(
+      'Cancel this booking?',
+      canManage ? 'The guest will lose this booking and the room is released.' : 'Your booking will be cancelled.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Cancel booking',
+          style: 'destructive',
+          onPress: () => run(() => reservationsApi.cancel(r.id, 'Cancelled from mobile app'), 'Booking cancelled'),
+        },
+      ]
+    );
 
   // A confirmed guest who hasn't turned up by the check-in date
-  const canNoShow = r.status === ReservationStatus.Confirmed && new Date(r.checkInDate) <= new Date();
+  const canNoShow = canManage && r.status === ReservationStatus.Confirmed && new Date(r.checkInDate) <= new Date();
   const canPay = canManage && r.remainingAmount > 0 && r.status !== ReservationStatus.Cancelled;
+  const paidShare = r.totalAmount > 0 ? Math.min(1, r.depositAmount / r.totalAmount) : 1;
+
+  // The one next step at the front desk, kept within thumb reach at the bottom
+  const primary = !canManage
+    ? null
+    : r.status === ReservationStatus.Pending
+      ? { title: 'Confirm booking', onPress: () => run(() => reservationsApi.confirm(r.id), 'Booking confirmed') }
+      : r.canCheckIn
+        ? { title: 'Check in', onPress: () => run(() => reservationsApi.checkIn(r.id), 'Checked in') }
+        : r.canCheckOut
+          ? { title: 'Check out', onPress: confirmCheckOut }
+          : null;
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView style={styles.screen} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
-        <View style={styles.card}>
-          <View style={styles.rowTop}>
-            <Text style={[styles.title, { fontSize: 20 }]}>{r.guestName ?? `Booking #${r.id}`}</Text>
+    <View style={screen.screen}>
+      <ScrollView
+        contentContainerStyle={[screen.content, primary && { paddingBottom: 110 + insets.bottom }]}
+        refreshControl={<RefreshControl {...pull} tintColor={colors.primary} colors={[colors.primary]} />}
+      >
+        <Card style={{ gap: space.md }}>
+          <View style={screen.row}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, flex: 1 }}>
+              {canManage && <Avatar name={r.guestName ?? ''} size={48} />}
+              <View style={{ flex: 1 }}>
+                <Text variant="title" numberOfLines={2}>
+                  {canManage ? (r.guestName ?? `Booking #${r.id}`) : (r.hotelName ?? `Booking #${r.id}`)}
+                </Text>
+                <Text variant="callout" color="muted">
+                  Booking #{r.id}
+                </Text>
+              </View>
+            </View>
             <StatusBadge status={r.status} />
           </View>
-          <Text style={styles.muted}>{formatStay(r)}</Text>
-          <Text style={styles.muted}>
-            {r.hotelName} · Room {r.roomNumber}
-          </Text>
-        </View>
-
-        {canManage && (
-          <View style={{ gap: 10 }}>
-            {r.status === ReservationStatus.Pending && (
-              <Button title="Confirm" onPress={() => run(() => api.confirm(r.id))} disabled={busy} />
-            )}
-            {r.canCheckIn && <Button title="Check in" onPress={() => run(() => api.checkIn(r.id))} disabled={busy} />}
-            {r.canCheckOut && <Button title="Check out" onPress={confirmCheckOut} disabled={busy} />}
+          <View style={styles.facts}>
+            <Fact icon={{ ios: 'calendar', android: 'calendar_month' }} text={formatStay(r)} />
+            <Fact icon={{ ios: 'bed.double', android: 'bed' }} text={`Room ${r.roomNumber}${canManage ? '' : ` · ${r.hotelName}`}`} />
+            <Fact
+              icon={{ ios: 'person.2', android: 'group' }}
+              text={`${r.numberOfGuests} guest${r.numberOfGuests === 1 ? '' : 's'}`}
+            />
           </View>
-        )}
+        </Card>
 
-        <Text style={styles.sectionTitle}>Payments</Text>
-        <View style={styles.card}>
-          <Field label="Total" value={formatMoney(r.totalAmount)} />
-          <Field label="Paid" value={formatMoney(r.depositAmount)} />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-            <Text style={styles.muted}>Remaining</Text>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: r.remainingAmount > 0 ? colors.danger : colors.success }}>
+        <SectionHeader title="Payment" />
+        <Card style={{ gap: space.sm }}>
+          <View style={screen.row}>
+            <Text variant="body" color="muted">
+              {r.remainingAmount > 0 ? 'Balance due' : 'Balance'}
+            </Text>
+            <Text variant="title" color={r.remainingAmount > 0 ? 'warning' : 'success'}>
               {r.remainingAmount > 0 ? formatMoney(r.remainingAmount) : 'Paid in full'}
             </Text>
           </View>
+          <View style={styles.progressTrack} accessibilityLabel={`${Math.round(paidShare * 100)}% paid`}>
+            <View style={[styles.progressFill, { width: `${paidShare * 100}%` }]} />
+          </View>
+          <View style={screen.row}>
+            <Text variant="caption" color="subtle">
+              Paid {formatMoney(r.depositAmount)}
+            </Text>
+            <Text variant="caption" color="subtle">
+              Total {formatMoney(r.totalAmount)}
+            </Text>
+          </View>
 
-          {payments.length > 0 && (
-            <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 6, paddingTop: 6 }}>
-              {payments.map((p) => (
+          {(payments.data?.length ?? 0) > 0 && (
+            <>
+              <Divider />
+              {payments.data!.map((p) => (
                 <PaymentLine key={p.id} payment={p} />
               ))}
-            </View>
+            </>
           )}
 
-          {canPay && !paying && (
-            <Button small title="Record payment" onPress={() => setPaying(true)} style={{ marginTop: 8 }} />
-          )}
-          {canPay && paying && (
-            <PaymentForm
-              reservation={r}
-              onCancel={() => setPaying(false)}
-              onSaved={async () => {
-                setPaying(false);
-                await refresh();
-              }}
+          {canPay && (
+            <Button
+              size="sm"
+              variant="secondary"
+              title="Record payment"
+              icon={{ ios: 'plus', android: 'add' }}
+              onPress={() => setPaying(true)}
+              style={{ marginTop: space.sm }}
             />
           )}
-        </View>
+        </Card>
 
-        <Text style={styles.sectionTitle}>Details</Text>
-        <View style={styles.card}>
-          <Field label="Guests" value={r.numberOfGuests} />
-          <Field label="Booking #" value={r.id} />
-          <Field label="Special requests" value={r.specialRequests} />
-          <Field label="Notes" value={r.notes} />
-        </View>
+        {(r.specialRequests || r.notes) && (
+          <>
+            <SectionHeader title="Notes" />
+            <Card>
+              <KeyValue label="Special requests" value={r.specialRequests} />
+              <KeyValue label="Notes" value={r.notes} />
+            </Card>
+          </>
+        )}
 
-        {(canNoShow && canManage) || r.canCancel ? (
-          <View style={{ gap: 10, marginTop: 6 }}>
-            {canNoShow && canManage && (
-              <Button title="Mark no-show" variant="secondary" onPress={confirmNoShow} disabled={busy} />
+        {(canNoShow || r.canCancel) && (
+          <View style={{ gap: space.sm, marginTop: space.md }}>
+            {canNoShow && (
+              <Button title="Mark no-show" variant="secondary" onPress={confirmNoShow} disabled={action.isPending} />
             )}
-            {r.canCancel && <Button title="Cancel reservation" variant="danger" onPress={confirmCancel} disabled={busy} />}
+            {r.canCancel && (
+              <Button
+                title="Cancel booking"
+                variant="ghost"
+                onPress={confirmCancel}
+                disabled={action.isPending}
+                style={{ backgroundColor: colors.tones.danger.bg }}
+              />
+            )}
           </View>
-        ) : null}
+        )}
       </ScrollView>
-    </KeyboardAvoidingView>
+
+      {primary && (
+        <View style={[styles.bottomBar, { paddingBottom: space.md + insets.bottom }]}>
+          <Button title={primary.title} onPress={primary.onPress} loading={action.isPending} />
+        </View>
+      )}
+
+      {canPay && (
+        <Sheet
+          visible={paying}
+          onClose={() => setPaying(false)}
+          title="Record payment"
+          message={`${formatMoney(r.remainingAmount)} still to pay`}
+        >
+          <PaymentForm reservation={r} onDone={() => setPaying(false)} />
+        </Sheet>
+      )}
+    </View>
+  );
+}
+
+function Fact({ icon, text }: { icon: { ios: IosSymbol; android: AndroidSymbol }; text: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+      <Icon ios={icon.ios} android={icon.android} size={17} color={colors.textMuted} />
+      <Text variant="body" style={{ flex: 1 }}>
+        {text}
+      </Text>
+    </View>
   );
 }
 
@@ -152,14 +250,16 @@ function PaymentLine({ payment: p }: { payment: Payment }) {
   const refund = p.type === PaymentTransactionType.Refund;
   const method = p.method !== null && p.method !== undefined ? PaymentMethodLabels[p.method] : null;
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 4 }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.md, paddingVertical: space.xs }}>
       <View style={{ flexShrink: 1 }}>
-        <Text style={{ fontSize: 15, color: colors.text }}>{refund ? 'Refund' : (method ?? 'Payment')}</Text>
-        <Text style={[styles.muted, { fontSize: 12 }]}>
+        <Text variant="body" weight="500">
+          {refund ? 'Refund' : (method ?? 'Payment')}
+        </Text>
+        <Text variant="caption" color="subtle">
           {[formatServerTime(p.createdAt), p.reference, p.createdByName].filter(Boolean).join(' · ')}
         </Text>
       </View>
-      <Text style={{ fontSize: 15, color: refund ? colors.danger : colors.text }}>
+      <Text variant="body" weight="600" color={refund ? 'danger' : 'text'}>
         {refund ? '−' : ''}
         {formatMoney(p.amount)}
       </Text>
@@ -167,67 +267,78 @@ function PaymentLine({ payment: p }: { payment: Payment }) {
   );
 }
 
-function PaymentForm({
-  reservation,
-  onCancel,
-  onSaved,
-}: {
-  reservation: Reservation;
-  onCancel: () => void;
-  onSaved: () => void;
-}) {
+function PaymentForm({ reservation, onDone }: { reservation: Reservation; onDone: () => void }) {
+  const record = useRecordPayment(reservation.id);
+  const toast = useToast();
   const [amount, setAmount] = useState(reservation.remainingAmount.toFixed(2));
   const [method, setMethod] = useState(PaymentMethod.Cash);
   const [reference, setReference] = useState('');
-  const [saving, setSaving] = useState(false);
 
   // Accept a decimal comma too, as phone keyboards in many regions type one
   const value = Number(amount.replace(',', '.'));
   const valid = Number.isFinite(value) && value > 0 && value <= reservation.remainingAmount;
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      await api.recordPayment(reservation.id, value, method, reference.trim() || undefined);
-      onSaved();
-    } catch (e) {
-      Alert.alert('Could not record the payment', e instanceof Error ? e.message : 'Something went wrong');
-      setSaving(false);
-    }
-  };
+  const save = () =>
+    record.mutate(
+      { amount: value, method, reference: reference.trim() || undefined },
+      {
+        onSuccess: () => {
+          toast.show(`Payment of ${formatMoney(value)} recorded`);
+          onDone();
+        },
+        onError: (e) => Alert.alert('Could not record the payment', errorText(e)),
+      }
+    );
 
   return (
-    <View style={{ gap: 10, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 8, paddingTop: 10 }}>
-      <TextInput
-        style={styles.input}
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ gap: space.md }}>
+      <TextField
+        label="Amount"
         value={amount}
         onChangeText={setAmount}
         keyboardType="decimal-pad"
-        placeholder="Amount"
-        placeholderTextColor={colors.muted}
         selectTextOnFocus
+        error={!valid && amount !== '' ? `Enter an amount up to ${formatMoney(reservation.remainingAmount)}` : null}
       />
-      {!valid && amount !== '' && (
-        <Text style={[styles.error, { textAlign: 'left', fontSize: 13 }]}>
-          Enter an amount up to {formatMoney(reservation.remainingAmount)}
+      <View style={{ gap: space.xs + 2 }}>
+        <Text variant="callout" weight="500" color="muted">
+          Method
         </Text>
-      )}
-      <View style={styles.chips}>
-        {DESK_METHODS.map((m) => (
-          <Chip key={m} label={PaymentMethodLabels[m]} selected={method === m} onPress={() => setMethod(m)} />
-        ))}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+          {DESK_METHODS.map((m) => (
+            <Chip key={m} label={PaymentMethodLabels[m]} selected={method === m} onPress={() => setMethod(m)} />
+          ))}
+        </View>
       </View>
-      <TextInput
-        style={styles.input}
+      <TextField
+        label="Reference (optional)"
+        placeholder="e.g. receipt #"
         value={reference}
         onChangeText={setReference}
-        placeholder="Reference (optional), e.g. receipt #"
-        placeholderTextColor={colors.muted}
       />
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Button small title={saving ? 'Saving…' : `Record ${valid ? formatMoney(value) : ''}`} onPress={save} disabled={!valid || saving} />
-        <Button small title="Cancel" variant="secondary" onPress={onCancel} disabled={saving} />
-      </View>
-    </View>
+      <Button
+        title={valid ? `Record ${formatMoney(value)}` : 'Record payment'}
+        onPress={save}
+        loading={record.isPending}
+        disabled={!valid}
+      />
+    </KeyboardAvoidingView>
   );
 }
+
+const useStyles = makeStyles((t) => ({
+  facts: { gap: space.sm, paddingTop: space.xs },
+  progressTrack: { height: 8, borderRadius: radius.pill, backgroundColor: t.colors.surfaceAlt, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: radius.pill, backgroundColor: t.colors.tones.success.fg },
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    backgroundColor: t.colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: t.colors.border,
+  },
+}));

@@ -1,9 +1,9 @@
-import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
-import { api } from './api';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useHotels } from '@/features/hotels/hooks';
+import { errorText } from './http';
 import { useAuth } from './auth';
 import { storage } from './storage';
 import type { Hotel } from './types';
-import { useApi } from './useApi';
 
 interface HotelContextValue {
   /** The hotels a staff member works at (empty for guests) */
@@ -23,15 +23,23 @@ const selectedKey = (userId: string) => `hotel-mgmt-hotel-${userId}`;
 export function HotelProvider({ children }: { children: ReactNode }) {
   const { user, isStaff } = useAuth();
   const userId = isStaff && user ? user.id : null;
+  const { data, error, isPending, refetch } = useHotels(!!userId);
 
-  const { data, error, loading, refresh } = useApi(async () => {
-    if (!userId) return null;
-    const [hotels, saved] = await Promise.all([api.hotels(), storage.get(selectedKey(userId))]);
-    return { hotels, savedId: Number(saved) || null };
-  }, userId ?? '');
-
-  // A choice made in this session, tied to the user it was made by
+  // The saved choice, and one made in this session; both tied to the user they belong to
+  const [saved, setSaved] = useState<{ userId: string; hotelId: number | null } | null>(null);
   const [picked, setPicked] = useState<{ userId: string; hotelId: number } | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    let current = true;
+    storage
+      .get(selectedKey(userId))
+      .then((value) => current && setSaved({ userId, hotelId: Number(value) || null }))
+      .catch(() => current && setSaved({ userId, hotelId: null }));
+    return () => {
+      current = false;
+    };
+  }, [userId]);
 
   const selectHotel = useCallback(
     (hotelId: number) => {
@@ -42,13 +50,23 @@ export function HotelProvider({ children }: { children: ReactNode }) {
     [userId]
   );
 
+  const savedLoaded = saved?.userId === userId;
   const value = useMemo<HotelContextValue>(() => {
-    const hotels = data?.hotels ?? [];
+    const hotels = userId ? (data ?? []) : [];
     const pickedId = picked?.userId === userId ? picked.hotelId : null;
+    const savedId = savedLoaded ? saved?.hotelId : null;
     const hotel =
-      hotels.find((h) => h.id === pickedId) ?? hotels.find((h) => h.id === data?.savedId) ?? hotels[0] ?? null;
-    return { hotels, hotel, selectHotel, loading: !!userId && loading, error, reload: refresh };
-  }, [data, picked, userId, loading, error, refresh, selectHotel]);
+      hotels.find((h) => h.id === pickedId) ?? hotels.find((h) => h.id === savedId) ?? hotels[0] ?? null;
+    return {
+      hotels,
+      hotel,
+      selectHotel,
+      loading: !!userId && ((isPending && !data) || !savedLoaded),
+      // With hotels already on screen (e.g. from the saved cache), a failed refresh isn't shown
+      error: userId && error && !data ? errorText(error) : null,
+      reload: () => void refetch(),
+    };
+  }, [data, error, isPending, picked, saved, savedLoaded, userId, selectHotel, refetch]);
 
   return <HotelContext.Provider value={value}>{children}</HotelContext.Provider>;
 }

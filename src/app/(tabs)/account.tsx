@@ -1,9 +1,11 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
-import { API_URL } from '@/lib/api';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Avatar, Button, Card, Icon, KeyValue, SectionHeader, Skeleton, Text, useScreenStyles } from '@/components';
 import { useAuth } from '@/lib/auth';
+import { haptics } from '@/lib/haptics';
 import { useHotel } from '@/lib/hotel';
-import { Button, colors, Field, Icon, styles } from '@/components/ui';
+import { API_URL } from '@/lib/http';
+import { radius, space, useTheme } from '@/theme';
 
 // "1.0.0 (build 29812345)" in an APK; builds are numbered by android-build/build.sh and CI
 function appVersion(): string {
@@ -13,74 +15,141 @@ function appVersion(): string {
   return build ? `${version} (build ${build})` : version;
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  SuperAdmin: 'Super admin',
+  Admin: 'Owner / admin',
+  Manager: 'Manager',
+  Housekeeper: 'Housekeeping',
+  Guest: 'Guest',
+};
+
 export default function AccountScreen() {
+  const screen = useScreenStyles();
   const { user, isStaff, logout } = useAuth();
 
-  const confirmLogout = () =>
-    Alert.alert('Sign out?', undefined, [
+  const confirmLogout = () => {
+    haptics.warning();
+    Alert.alert('Sign out?', 'You will need your password to sign in again.', [
       { text: 'Stay signed in', style: 'cancel' },
       { text: 'Sign out', style: 'destructive', onPress: () => void logout() },
     ]);
+  };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.list}>
-      <View style={styles.card}>
-        <Text style={[styles.title, { fontSize: 20 }]}>{user?.fullName}</Text>
-        <Text style={styles.muted}>{user?.email}</Text>
-        <Text style={styles.muted}>{user?.roles.join(', ')}</Text>
-      </View>
+    <ScrollView style={screen.screen} contentContainerStyle={screen.content}>
+      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg }}>
+        <Avatar name={user?.fullName ?? ''} size={56} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text variant="title" numberOfLines={1}>
+            {user?.fullName}
+          </Text>
+          <Text variant="callout" color="muted" numberOfLines={1}>
+            {user?.email}
+          </Text>
+          <Text variant="caption" color="primary" style={{ marginTop: 2 }}>
+            {user?.roles.map((role) => ROLE_LABELS[role] ?? role).join(' · ')}
+          </Text>
+        </View>
+      </Card>
 
       {isStaff && <HotelPicker />}
 
-      <Text style={styles.sectionTitle}>App</Text>
-      <View style={styles.card}>
-        <Field label="Version" value={appVersion()} />
-        <Field label="Server" value={API_URL.replace(/^https?:\/\//, '')} />
-      </View>
+      <SectionHeader title="App" />
+      <Card>
+        <KeyValue label="Version" value={appVersion()} />
+        <KeyValue label="Server" value={API_URL.replace(/^https?:\/\//, '').replace(/\/api$/, '')} />
+      </Card>
 
-      <Button title="Sign out" variant="secondary" onPress={confirmLogout} style={{ marginTop: 8 }} />
+      <Button
+        title="Sign out"
+        variant="secondary"
+        icon={{ ios: 'rectangle.portrait.and.arrow.right', android: 'logout' }}
+        onPress={confirmLogout}
+        style={{ marginTop: space.lg }}
+      />
     </ScrollView>
   );
 }
 
 function HotelPicker() {
+  const { colors } = useTheme();
   const { hotels, hotel, selectHotel, loading, error, reload } = useHotel();
 
   return (
     <>
-      <Text style={styles.sectionTitle}>{hotels.length > 1 ? 'Show hotel' : 'Hotel'}</Text>
-      <View style={[styles.card, { paddingVertical: 4 }]}>
-        {loading && <ActivityIndicator style={{ paddingVertical: 10 }} color={colors.primary} />}
+      <SectionHeader title={hotels.length > 1 ? 'Working at' : 'Hotel'} />
+      <Card padded={false} style={{ paddingVertical: space.xs }}>
+        {loading && (
+          <View style={{ padding: space.lg, gap: space.sm }}>
+            <Skeleton width="60%" height={16} />
+            <Skeleton width="30%" />
+          </View>
+        )}
         {error && (
-          <Pressable onPress={reload} style={{ paddingVertical: 10 }}>
-            <Text style={styles.error}>{error} · Tap to retry</Text>
+          <Pressable onPress={reload} style={{ padding: space.lg }}>
+            <Text variant="callout" color="danger">
+              {error} · Tap to retry
+            </Text>
           </Pressable>
         )}
         {!loading && !error && hotels.length === 0 && (
-          <Text style={[styles.empty, { paddingVertical: 10 }]}>Not assigned to a hotel yet</Text>
+          <Text variant="callout" color="subtle" style={{ padding: space.lg }}>
+            Not assigned to a hotel yet
+          </Text>
         )}
-        {hotels.map((h, index) => (
-          <Pressable
-            key={h.id}
-            onPress={() => selectHotel(h.id)}
-            disabled={hotels.length === 1}
-            style={({ pressed }) => [
-              styles.rowTop,
-              { paddingVertical: 10 },
-              index > 0 && { borderTopWidth: 1, borderTopColor: colors.border },
-              pressed && { opacity: 0.6 },
-            ]}
-          >
-            <View style={{ flexShrink: 1 }}>
-              <Text style={styles.title}>{h.name}</Text>
-              <Text style={styles.muted}>{h.city}</Text>
-            </View>
-            {h.id === hotel?.id && hotels.length > 1 && (
-              <Icon ios="checkmark" android="check" color={colors.primary} size={22} />
-            )}
-          </Pressable>
-        ))}
-      </View>
+        {hotels.map((h, index) => {
+          const active = h.id === hotel?.id;
+          return (
+            <Pressable
+              key={h.id}
+              onPress={() => {
+                haptics.selection();
+                selectHotel(h.id);
+              }}
+              disabled={hotels.length === 1}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: active }}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: space.md,
+                paddingHorizontal: space.lg,
+                paddingVertical: space.md,
+                borderTopWidth: index > 0 ? 1 : 0,
+                borderTopColor: colors.border,
+                backgroundColor: pressed ? colors.surfaceAlt : 'transparent',
+              })}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: radius.sm,
+                  backgroundColor: active ? colors.tones.primary.bg : colors.surfaceAlt,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Icon
+                  ios="building.2"
+                  android="apartment"
+                  size={18}
+                  color={active ? colors.tones.primary.fg : colors.textMuted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="headline">{h.name}</Text>
+                <Text variant="callout" color="muted">
+                  {h.city}
+                </Text>
+              </View>
+              {active && hotels.length > 1 && (
+                <Icon ios="checkmark.circle.fill" android="check_circle" color={colors.primary} size={22} />
+              )}
+            </Pressable>
+          );
+        })}
+      </Card>
     </>
   );
 }

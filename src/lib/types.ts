@@ -1,4 +1,5 @@
 // The subset of the API's shapes this app uses (same as the web app's types/)
+import type { ToneName } from '@/theme';
 
 export interface AuthResponse {
   token: string;
@@ -6,6 +7,9 @@ export interface AuthResponse {
   fullName: string;
   roles: string[];
   expiresAt: string;
+  /** Single use: exchanged at /Auth/refresh for new tokens */
+  refreshToken: string;
+  refreshTokenExpiresAt: string;
 }
 
 export interface AuthUser {
@@ -52,13 +56,13 @@ export const ReservationStatusLabels: Record<ReservationStatus, string> = {
   [ReservationStatus.NoShow]: 'No-show',
 };
 
-export const ReservationStatusColors: Record<ReservationStatus, string> = {
-  [ReservationStatus.Pending]: '#b45309',
-  [ReservationStatus.Confirmed]: '#1d4ed8',
-  [ReservationStatus.CheckedIn]: '#15803d',
-  [ReservationStatus.CheckedOut]: '#6b7280',
-  [ReservationStatus.Cancelled]: '#b91c1c',
-  [ReservationStatus.NoShow]: '#9f1239',
+export const ReservationStatusTones: Record<ReservationStatus, ToneName> = {
+  [ReservationStatus.Pending]: 'warning',
+  [ReservationStatus.Confirmed]: 'info',
+  [ReservationStatus.CheckedIn]: 'success',
+  [ReservationStatus.CheckedOut]: 'neutral',
+  [ReservationStatus.Cancelled]: 'danger',
+  [ReservationStatus.NoShow]: 'rose',
 };
 
 export interface Reservation {
@@ -140,13 +144,13 @@ export const RoomStatusLabels: Record<RoomStatus, string> = {
   [RoomStatus.Reserved]: 'Reserved',
 };
 
-export const RoomStatusColors: Record<RoomStatus, string> = {
-  [RoomStatus.Available]: '#15803d',
-  [RoomStatus.Occupied]: '#1d4ed8',
-  [RoomStatus.Cleaning]: '#b45309',
-  [RoomStatus.Maintenance]: '#9f1239',
-  [RoomStatus.OutOfService]: '#6b7280',
-  [RoomStatus.Reserved]: '#7c3aed',
+export const RoomStatusTones: Record<RoomStatus, ToneName> = {
+  [RoomStatus.Available]: 'success',
+  [RoomStatus.Occupied]: 'info',
+  [RoomStatus.Cleaning]: 'warning',
+  [RoomStatus.Maintenance]: 'rose',
+  [RoomStatus.OutOfService]: 'neutral',
+  [RoomStatus.Reserved]: 'violet',
 };
 
 export enum RoomType {

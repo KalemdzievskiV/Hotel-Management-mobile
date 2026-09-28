@@ -1,56 +1,28 @@
+import type { UseQueryResult } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { ReactNode, useMemo, useState } from 'react';
-import { RefreshControl, SectionList, Text, TextInput, View } from 'react-native';
-import { api } from '@/lib/api';
+import { RefreshControl, SectionList, View } from 'react-native';
+import {
+  EmptyState,
+  ErrorState,
+  HotelLine,
+  SectionHeader,
+  SkeletonList,
+  Text,
+  TextField,
+  useScreenStyles,
+  WithHotel,
+} from '@/components';
+import { ReservationCard } from '@/features/reservations/components';
+import { useDeskReservations, useMyReservations, type ReservationSection } from '@/features/reservations/hooks';
 import { useAuth } from '@/lib/auth';
-import { useApi, useRefreshOnFocus } from '@/lib/useApi';
-import { Hotel, Reservation, ReservationStatus } from '@/lib/types';
-import { HotelLine, WithHotel } from '@/components/WithHotel';
-import { colors, ErrorMessage, Loading, ReservationRow, styles } from '@/components/ui';
-
-interface Section {
-  title: string;
-  data: Reservation[];
-}
-
-const OPEN_STATUSES = [ReservationStatus.Pending, ReservationStatus.Confirmed, ReservationStatus.CheckedIn];
-
-// Front desk: today's arrivals and departures at the selected hotel first, then everything
-// else there that's still open
-async function loadDeskSections(hotelId: number): Promise<Section[]> {
-  const [checkIns, checkOuts, all] = await Promise.all([
-    api.todaysCheckIns(),
-    api.todaysCheckOuts(),
-    api.reservations(),
-  ]);
-  const atHotel = (list: Reservation[]) => list.filter((r) => r.hotelId === hotelId);
-  const todayIds = new Set([...checkIns, ...checkOuts].map((r) => r.id));
-  const open = atHotel(all).filter((r) => !todayIds.has(r.id) && OPEN_STATUSES.includes(r.status));
-  return [
-    { title: 'Arriving today', data: atHotel(checkIns) },
-    { title: 'Leaving today', data: atHotel(checkOuts) },
-    { title: 'Upcoming and in-house', data: byCheckIn(open) },
-  ];
-}
-
-async function loadGuestSections(): Promise<Section[]> {
-  const mine = await api.reservations();
-  const upcoming = mine.filter((r) => OPEN_STATUSES.includes(r.status));
-  const past = mine.filter((r) => !OPEN_STATUSES.includes(r.status));
-  return [
-    { title: 'Upcoming', data: byCheckIn(upcoming) },
-    { title: 'Past and cancelled', data: byCheckIn(past).reverse() },
-  ];
-}
-
-function byCheckIn(list: Reservation[]): Reservation[] {
-  return [...list].sort((a, b) => a.checkInDate.localeCompare(b.checkInDate));
-}
+import { errorText } from '@/lib/http';
+import { usePullToRefresh, useRefreshOnFocus } from '@/lib/query';
+import type { Hotel, Reservation } from '@/lib/types';
+import { space, useTheme } from '@/theme';
 
 function matches(r: Reservation, query: string): boolean {
-  return [r.guestName, r.roomNumber, r.hotelName, String(r.id)].some((value) =>
-    value?.toLowerCase().includes(query)
-  );
+  return [r.guestName, r.roomNumber, r.hotelName, String(r.id)].some((value) => value?.toLowerCase().includes(query));
 }
 
 export default function ReservationsScreen() {
@@ -59,79 +31,107 @@ export default function ReservationsScreen() {
 }
 
 function DeskReservations({ hotel }: { hotel: Hotel }) {
-  const result = useApi(() => loadDeskSections(hotel.id), String(hotel.id));
-  return <ReservationList {...result} header={<HotelLine />} />;
+  const query = useDeskReservations(hotel.id);
+  return <ReservationList query={query} perspective="desk" header={<HotelLine />} />;
 }
 
 function GuestReservations() {
-  const result = useApi(loadGuestSections);
-  return <ReservationList {...result} />;
+  const query = useMyReservations();
+  return <ReservationList query={query} perspective="guest" />;
 }
 
 function ReservationList({
-  data,
-  error,
-  loading,
-  refreshing,
-  refresh,
+  query,
+  perspective,
   header,
 }: {
-  data: Section[] | null;
-  error: string | null;
-  loading: boolean;
-  refreshing: boolean;
-  refresh: () => void;
+  query: UseQueryResult<ReservationSection[]>;
+  perspective: 'desk' | 'guest';
   header?: ReactNode;
 }) {
+  const screen = useScreenStyles();
+  const { colors } = useTheme();
+  const { data, error, isPending, refetch } = query;
+  const pull = usePullToRefresh(refetch);
   const [search, setSearch] = useState('');
-  useRefreshOnFocus(refresh);
+  useRefreshOnFocus(refetch);
 
-  const query = search.trim().toLowerCase();
+  const term = search.trim().toLowerCase();
   const sections = useMemo(
     () =>
-      query
+      term
         ? (data ?? [])
-            .map((section) => ({ ...section, data: section.data.filter((r) => matches(r, query)) }))
+            .map((section) => ({ ...section, data: section.data.filter((r) => matches(r, term)) }))
             .filter((section) => section.data.length > 0)
         : (data ?? []),
-    [data, query]
+    [data, term]
   );
 
-  if (loading) return <Loading />;
-  if (error) return <ErrorMessage message={error} onRetry={refresh} />;
+  if (isPending) return <SkeletonList />;
+  if (error && !data) return <ErrorState message={errorText(error)} onRetry={() => void refetch()} />;
+
+  const total = (data ?? []).reduce((sum, s) => sum + s.data.length, 0);
+  if (perspective === 'guest' && total === 0) {
+    return (
+      <EmptyState
+        icon={{ ios: 'suitcase', android: 'luggage' }}
+        title="No trips yet"
+        message="Bookings you make will show up here."
+      />
+    );
+  }
 
   return (
     <SectionList
-      style={styles.screen}
+      style={screen.screen}
       sections={sections}
       keyExtractor={(item, index) => `${item.id}-${index}`}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={screen.content}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       stickySectionHeadersEnabled={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+      refreshControl={<RefreshControl {...pull} tintColor={colors.primary} colors={[colors.primary]} />}
       ListHeaderComponent={
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: space.md }}>
           {header}
-          <TextInput
-            style={styles.input}
-            placeholder="Search guest, room or booking #"
-            placeholderTextColor={colors.muted}
-            value={search}
-            onChangeText={setSearch}
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-            returnKeyType="search"
-          />
+          {total > 0 && (
+            <TextField
+              icon={{ ios: 'magnifyingglass', android: 'search' }}
+              placeholder={perspective === 'desk' ? 'Search guest, room or booking #' : 'Search hotel or booking #'}
+              accessibilityLabel="Search bookings"
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+              returnKeyType="search"
+            />
+          )}
         </View>
       }
-      ListEmptyComponent={query ? <Text style={styles.empty}>No bookings match “{search.trim()}”</Text> : null}
-      renderSectionHeader={({ section }) => <Text style={styles.sectionTitle}>{section.title}</Text>}
+      ListEmptyComponent={
+        term ? (
+          <EmptyState
+            fill={false}
+            icon={{ ios: 'magnifyingglass', android: 'search' }}
+            title="No matches"
+            message={`No bookings match “${search.trim()}”.`}
+          />
+        ) : null
+      }
+      renderSectionHeader={({ section }) => <SectionHeader title={section.title} count={section.data.length} />}
       renderSectionFooter={({ section }) =>
-        section.data.length === 0 ? <Text style={styles.empty}>Nothing here</Text> : null
+        section.data.length === 0 ? (
+          <Text variant="callout" color="subtle" style={{ paddingVertical: space.xs }}>
+            {section.key === 'arrivals' ? 'No arrivals today' : section.key === 'departures' ? 'No departures today' : 'Nothing here'}
+          </Text>
+        ) : null
       }
       renderItem={({ item }) => (
-        <ReservationRow reservation={item} onPress={() => router.push(`/reservations/${item.id}`)} />
+        <ReservationCard
+          reservation={item}
+          perspective={perspective}
+          onPress={() => router.push(`/reservations/${item.id}`)}
+        />
       )}
     />
   );

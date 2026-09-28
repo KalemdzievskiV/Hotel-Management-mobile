@@ -69,5 +69,10 @@ export function formatStay(r: Reservation): string {
     return `${formatDateTime(r.checkInDate)} · ${r.durationInHours ?? '?'} h`;
   }
   const nights = r.totalNights ? ` · ${r.totalNights} night${r.totalNights === 1 ? '' : 's'}` : '';
-  return `${formatDate(r.checkInDate)} → ${formatDate(r.checkOutDate)}${nights}`;
+  // The year once, on the last date, when both dates fall in the same year
+  const sameYear = new Date(r.checkInDate).getFullYear() === new Date(r.checkOutDate).getFullYear();
+  const start = sameYear
+    ? new Date(r.checkInDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+    : formatDate(r.checkInDate);
+  return `${start} → ${formatDate(r.checkOutDate)}${nights}`;
 }

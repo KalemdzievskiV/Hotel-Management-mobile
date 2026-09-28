@@ -7,8 +7,12 @@ web app (`Hotel-Management-backend`), so it uses the same database, accounts and
 
 ## What it does
 
-Sign in with any existing account; the session is kept in the device's secure storage. The tabs
-depend on the role:
+Sign in with any existing account. The session is kept in the device's secure storage and renews
+itself: the API issues a 30-day refresh token next to the 1-hour access token, and the app swaps
+it for new tokens when the access token runs out (`src/lib/http.ts`). You're only signed out
+after 30 days without using the app, or when an admin deactivates you or changes your role.
+This needs a backend with `/api/Auth/refresh`; against an older one, sessions end after an hour
+as before. The tabs depend on the role:
 
 - **Management** (SuperAdmin, Admin, Manager)
   - **Reservations**: today's arrivals and departures, then open bookings, with search. A
@@ -23,7 +27,9 @@ depend on the role:
 - **Account** (everyone): who's signed in, the hotel (staff with several hotels pick one here),
   the app version and build, and sign out
 
-Pull down to refresh any list; lists also refresh when you come back to them.
+Pull down to refresh any list; lists also refresh when you come back to them or to the app.
+What was loaded last is saved on the device for a day (cleared on sign-out), so lists appear
+straight away and still show while offline. The app follows the phone's light or dark setting.
 
 ## Which backend it uses
 
@@ -103,7 +109,7 @@ housekeeper, guest `@hotel.com`) are listed in the backend's `Data/DbSeeder.cs`.
 
 ```
 src/app/                 screens (Expo Router: every file is a route)
-  _layout.tsx            auth gate + stack navigator
+  _layout.tsx            providers (query cache, theme, toasts, auth), auth gate, error screen
   login.tsx
   (tabs)/_layout.tsx     the tab bar; which tabs each role gets
   (tabs)/index.tsx       reservations (front desk) / my bookings (guests)
@@ -112,8 +118,14 @@ src/app/                 screens (Expo Router: every file is a route)
   (tabs)/hotels.tsx      guests only
   (tabs)/account.tsx
   reservations/[id].tsx  reservation details, actions and payments
-src/lib/                 API client, auth/session, selected hotel, types, formatting
-src/components/          shared UI pieces and styles
+src/features/<area>/     api.ts (API calls) and hooks.ts (TanStack Query hooks) per area:
+                         auth, hotels, reservations, rooms, housekeeping
+src/lib/                 http client (token refresh), auth/session, query client, selected
+                         hotel, types, formatting, haptics
+src/components/          the design system: Button, Card, Badge, Chip, TextField, Sheet,
+                         Toast, Skeleton, EmptyState, ... (import from '@/components')
+src/theme/               design tokens (colors for light and dark, spacing, radius, type
+                         scale), useTheme() and makeStyles()
 android-build/           Docker image and script for local APK builds
 scripts/serve-apk.mjs    shares the built APK on the local network
 ```
