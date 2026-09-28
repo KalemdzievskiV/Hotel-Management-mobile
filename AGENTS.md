@@ -34,6 +34,8 @@ Run lint and typecheck before declaring any task done.
 Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
 Docs: https://docs.expo.dev/eas/index.md
 
+**In this project, don't use `eas build` for Android APKs**: the free tier's queue takes an hour or more. Build with `npm run build:apk` (Docker, `android-build/`), or push to `master` and GitHub Actions publishes the APK (`.github/workflows/android-apk.yml`). See README → "Installing the app on an Android phone". To keep the no-build Expo Go workflow working, prefer libraries Expo Go includes.
+
 ## Rules
 
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.

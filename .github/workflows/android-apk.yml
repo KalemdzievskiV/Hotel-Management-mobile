@@ -1,0 +1,64 @@
+# Builds the Android APK on every push to master (free: the repo is public) and publishes it as
+# the latest GitHub release, so the phone can always download it from the same address:
+# https://github.com/KalemdzievskiV/Hotel-Management-mobile/releases/latest/download/hotel-management.apk
+name: Android APK
+
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['**.md', 'android-build/**', 'scripts/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Not `npm ci`: npm on Windows leaves Linux-only optional packages (@emnapi/*) out of the
+      # lockfile, and ci refuses such a lockfile. install keeps the locked versions and adds them.
+      - run: npm install --no-audit --no-fund
+
+      # Same values as a local build (android-build/build.sh): the API from .env, and a
+      # versionCode that is always higher than the previous build's
+      - name: Build settings
+        run: |
+          grep -E '^EXPO_PUBLIC_API_URL=' .env >> "$GITHUB_ENV"
+          echo "ANDROID_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
+
+      - run: npx expo prebuild --platform android --no-install
+
+      - name: Build release APK (arm64)
+        working-directory: android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+
+      - run: mv android/app/build/outputs/apk/release/app-release.apk hotel-management.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          body: ${{ github.event.head_commit.message || 'Manual build' }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: hotel-management.apk

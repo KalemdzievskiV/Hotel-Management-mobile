@@ -5,13 +5,25 @@ web app (`Hotel-Management-backend`), so it uses the same database, accounts and
 
 **Stack:** Expo SDK 57 · Expo Router · TypeScript
 
-## What it does (first version)
+## What it does
 
-- Sign in with any existing account; the session is kept in the device's secure storage
-- **Staff** (SuperAdmin, Admin, Manager): today's arrivals and departures, plus open bookings;
-  open a booking to confirm, check in, check out or cancel it
-- **Guests**: their own reservations
-- Hotels list; pull down to refresh any list
+Sign in with any existing account; the session is kept in the device's secure storage. The tabs
+depend on the role:
+
+- **Management** (SuperAdmin, Admin, Manager)
+  - **Reservations**: today's arrivals and departures, then open bookings, with search. A
+    booking can be confirmed, checked in or out, marked as a no-show or cancelled, and you can
+    see its payments and record new ones.
+  - **Housekeeping**: the day's tasks, with a day picker. "Create tasks" adds cleaning for
+    rooms with departures.
+  - **Rooms**: a board of all rooms by floor, colored by status. Tap a room to mark it cleaned
+    or set maintenance, out of service and so on.
+- **Housekeepers**: Housekeeping (their own and unassigned tasks, Start → Mark done) and Rooms
+- **Guests**: their bookings, and the hotels list
+- **Account** (everyone): who's signed in, the hotel (staff with several hotels pick one here),
+  the app version and build, and sign out
+
+Pull down to refresh any list; lists also refresh when you come back to them.
 
 ## Which backend it uses
 
@@ -21,19 +33,50 @@ network. To use a backend running on your computer instead, create `.env.local` 
 `EXPO_PUBLIC_API_URL=http://<your LAN IP>:5001/api`; the phone must then be on the same Wi-Fi.
 The login screen shows which server the app is using.
 
-## Installing the app on an Android phone (works anywhere)
+## Installing the app on an Android phone
 
-Build a standalone APK with EAS. It runs without your computer:
+There are two free ways to get a standalone APK, which runs without your computer and talks to
+the Railway backend. Neither needs an Expo account. Both sign the APK the same way and number
+builds by time, so a new APK installs over the old one and you stay signed in.
+
+### A. GitHub builds it (nothing to install)
+
+Every push to `master` that changes the app builds an APK with GitHub Actions
+(`.github/workflows/android-apk.yml`). This is free because the repo is public, and takes about
+10 minutes. You can also start a build by hand under **Actions → Android APK → Run workflow**.
+The newest build is always at the same address, so bookmark it on the phone:
+
+https://github.com/KalemdzievskiV/Hotel-Management-mobile/releases/latest/download/hotel-management.apk
+
+### B. Build it on your computer (needs Docker Desktop)
 
 ```bash
-npx eas-cli@latest login                                # once, with your Expo account
-npx eas-cli@latest build -p android --profile preview   # builds in the cloud (~10-15 min)
+npm run build:apk   # builds dist/hotel-management.apk inside Docker
+npm run serve:apk   # shares it on your Wi-Fi: open the printed address on the phone
 ```
 
-When the build finishes, open the link it prints on the phone, download the APK and install it
-(allow "install unknown apps" for the browser when asked). Rebuild after changing the app.
-The `preview` and `production` profiles in `eas.json` bake in the Railway URL.
-iPhone builds need a paid Apple Developer account.
+The build runs in a container with its own JDK and Android SDK (`android-build/`), so there's
+nothing else to install. The first build downloads the Android SDK, NDK and Gradle (several GB)
+and takes 15–25 minutes. After that, builds reuse Docker volumes and take a few minutes.
+Only arm64 is built, which is every Android phone from the last several years; set
+`ANDROID_ARCHS=armeabi-v7a,arm64-v8a,x86,x86_64` for a universal APK (e.g. for an emulator).
+`serve:apk` may make Windows ask to let Node through the firewall; allow it on private networks.
+
+To start from scratch (e.g. after a strange Gradle error), delete the build volumes:
+`docker volume rm hotel-mobile-apk_work hotel-mobile-apk_gradle` (add `hotel-mobile-apk_sdk`
+to re-download the SDK too).
+
+### Installing on the phone
+
+Open the APK link, download it and install it (allow "install unknown apps" for the browser
+when asked). If you installed an earlier APK built by EAS, uninstall that once first: it was
+signed with a different key, so Android won't update it.
+
+The APK is signed with React Native's standard debug key. That's fine for installing it
+yourself, but the Play Store needs a private upload key. Set one up before publishing there.
+
+EAS cloud builds (`eas.json`) still work but are slow on the free tier. iPhone builds need a
+paid Apple Developer account either way.
 
 ## Developing with Expo Go
 
@@ -44,10 +87,17 @@ The phone downloads the app's code from your computer, so it has to be on the sa
 From another network, try `npm run start:tunnel`, which uses Expo's ngrok tunnel. That
 tunnel is often unreliable ("remote gone away"), so use the APK above instead.
 
+Code changes show up in Expo Go straight away, with no build. That's the fastest way to work
+on the app. Keep it that way by only adding libraries that Expo Go includes (the Expo SDK
+modules); anything else needs a new APK to try out.
+
 ## Quick test in a browser (local backend)
 
-`EXPO_PUBLIC_API_URL=http://localhost:5001/api npx expo start --web` opens the app at
-http://localhost:8081 (that origin is allowed by the backend's Development CORS settings).
+Run the backend with `dotnet run` (http://localhost:5213), then
+`EXPO_PUBLIC_API_URL=http://localhost:5213/api npx expo start --web --port 3001` opens the app
+at http://localhost:3001. Port 3001 matters: it's one of the origins the backend's Development
+CORS settings allow (`Cors:AllowedOrigins`). The seeded test accounts (admin, manager,
+housekeeper, guest `@hotel.com`) are listed in the backend's `Data/DbSeeder.cs`.
 
 ## Layout
 
@@ -55,11 +105,17 @@ http://localhost:8081 (that origin is allowed by the backend's Development CORS 
 src/app/                 screens (Expo Router: every file is a route)
   _layout.tsx            auth gate + stack navigator
   login.tsx
-  index.tsx              reservations home
-  reservations/[id].tsx  reservation details and actions
-  hotels.tsx
-src/lib/                 API client, auth/session, types, formatting
-src/components/ui.tsx    shared UI pieces and styles
+  (tabs)/_layout.tsx     the tab bar; which tabs each role gets
+  (tabs)/index.tsx       reservations (front desk) / my bookings (guests)
+  (tabs)/housekeeping.tsx
+  (tabs)/rooms.tsx
+  (tabs)/hotels.tsx      guests only
+  (tabs)/account.tsx
+  reservations/[id].tsx  reservation details, actions and payments
+src/lib/                 API client, auth/session, selected hotel, types, formatting
+src/components/          shared UI pieces and styles
+android-build/           Docker image and script for local APK builds
+scripts/serve-apk.mjs    shares the built APK on the local network
 ```
 
 ## Checks

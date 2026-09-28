@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { HotelProvider } from '@/lib/hotel';
 import { Loading } from '@/components/ui';
 
 function RootStack() {
@@ -13,9 +14,8 @@ function RootStack() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Protected guard={!!user}>
-        <Stack.Screen name="index" options={{ title: 'Reservations' }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="reservations/[id]" options={{ title: 'Reservation' }} />
-        <Stack.Screen name="hotels" options={{ title: 'Hotels' }} />
       </Stack.Protected>
     </Stack>
   );
@@ -24,8 +24,10 @@ function RootStack() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <StatusBar style="dark" />
-      <RootStack />
+      <HotelProvider>
+        <StatusBar style="dark" />
+        <RootStack />
+      </HotelProvider>
     </AuthProvider>
   );
 }

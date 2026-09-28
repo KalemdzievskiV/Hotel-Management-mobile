@@ -1,3 +1,4 @@
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface Result<T> {
@@ -50,4 +51,26 @@ export function useApi<T>(load: () => Promise<T>, key = '') {
     refresh,
     setData,
   };
+}
+
+/**
+ * Calls `refresh` when the screen comes back into focus (another tab, or back from a screen
+ * that may have changed the data). The first focus is skipped: useApi has just loaded.
+ */
+export function useRefreshOnFocus(refresh: () => void) {
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  });
+
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      refreshRef.current();
+    }, [])
+  );
 }

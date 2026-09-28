@@ -1,0 +1,23 @@
+# Local release APK build: npm run build:apk (see README)
+name: hotel-mobile-apk
+
+services:
+  apk:
+    build: .
+    image: hotel-mobile-android-builder
+    command: bash /src/android-build/build.sh
+    environment:
+      # Optional overrides from the host; build.sh has the defaults
+      - EXPO_PUBLIC_API_URL
+      - ANDROID_ARCHS
+    volumes:
+      - ..:/src
+      # Kept between builds, so only the first one is slow
+      - work:/work
+      - gradle:/cache/gradle
+      - sdk:/opt/android-sdk
+
+volumes:
+  work:
+  gradle:
+  sdk:

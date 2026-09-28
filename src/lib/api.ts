@@ -1,4 +1,14 @@
-import type { AuthResponse, Hotel, Reservation } from './types';
+import type {
+  AuthResponse,
+  Hotel,
+  HousekeepingSchedule,
+  HousekeepingTask,
+  Payment,
+  PaymentMethod,
+  Reservation,
+  Room,
+  RoomStatus,
+} from './types';
 
 // A phone can't reach "localhost" on your computer: set EXPO_PUBLIC_API_URL to the
 // computer's LAN address, e.g. http://192.168.1.20:5001/api (see README)
@@ -73,6 +83,7 @@ export const api = {
   login: (email: string, password: string) =>
     request<AuthResponse>('POST', '/Auth/login', { email, password }),
 
+  // Guests get every hotel; staff get only the hotels they work at
   hotels: () => request<Hotel[]>('GET', '/Hotels/public'),
 
   // Guests get their own bookings; staff get bookings for the hotels they work at
@@ -86,4 +97,23 @@ export const api = {
   checkOut: (id: number) => request<Reservation>('POST', `/Reservations/${id}/checkout`),
   cancel: (id: number, reason: string) =>
     request<Reservation>('POST', `/Reservations/${id}/cancel`, { reason }),
+  noShow: (id: number) => request<Reservation>('POST', `/Reservations/${id}/noshow`),
+
+  payments: (id: number) => request<Payment[]>('GET', `/Reservations/${id}/payments`),
+  recordPayment: (id: number, amount: number, paymentMethod: PaymentMethod, reference?: string) =>
+    request<Reservation>('POST', `/Reservations/${id}/payment`, { amount, paymentMethod, reference }),
+
+  rooms: (hotelId: number) => request<Room[]>('GET', `/Rooms/hotel/${hotelId}`),
+  setRoomStatus: (id: number, status: RoomStatus) => request<Room>('PATCH', `/Rooms/${id}/status`, { status }),
+  // Sets the room to Available and records the cleaning time
+  markRoomCleaned: (id: number) => request<unknown>('POST', `/Rooms/${id}/clean`),
+
+  /** `date` is a local calendar day, YYYY-MM-DD */
+  housekeepingSchedule: (hotelId: number, date: string) =>
+    request<HousekeepingSchedule>('GET', `/Housekeeping/hotel/${hotelId}/schedule?date=${date}`),
+  startTask: (id: number) => request<HousekeepingTask>('POST', `/Housekeeping/${id}/start`),
+  completeTask: (id: number) => request<HousekeepingTask>('POST', `/Housekeeping/${id}/complete`),
+  // Creates a cleaning task for every room with a departure that day (rooms that have one are skipped)
+  generateDailyTasks: (hotelId: number, date: string) =>
+    request<unknown>('POST', `/Housekeeping/hotel/${hotelId}/generate-daily?date=${date}`),
 };

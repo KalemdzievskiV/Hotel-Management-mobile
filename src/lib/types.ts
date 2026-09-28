@@ -9,6 +9,8 @@ export interface AuthResponse {
 }
 
 export interface AuthUser {
+  /** Identity user id, read from the token (matches e.g. assignedToUserId on tasks) */
+  id: string;
   email: string;
   fullName: string;
   roles: string[];
@@ -82,4 +84,148 @@ export interface Reservation {
   hotelName?: string;
   roomNumber?: string;
   guestName?: string;
+}
+
+export enum PaymentMethod {
+  Cash = 0,
+  CreditCard = 1,
+  DebitCard = 2,
+  BankTransfer = 3,
+  Online = 4,
+  PayOnArrival = 5,
+}
+
+export const PaymentMethodLabels: Record<PaymentMethod, string> = {
+  [PaymentMethod.Cash]: 'Cash',
+  [PaymentMethod.CreditCard]: 'Credit card',
+  [PaymentMethod.DebitCard]: 'Debit card',
+  [PaymentMethod.BankTransfer]: 'Bank transfer',
+  [PaymentMethod.Online]: 'Online',
+  [PaymentMethod.PayOnArrival]: 'Pay on arrival',
+};
+
+export enum PaymentTransactionType {
+  Payment = 1,
+  Refund = 2,
+}
+
+/** One entry in a reservation's payment ledger */
+export interface Payment {
+  id: number;
+  reservationId: number;
+  type: PaymentTransactionType;
+  amount: number;
+  method?: PaymentMethod | null;
+  reference?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  createdByName?: string | null;
+}
+
+export enum RoomStatus {
+  Available = 1,
+  Occupied = 2,
+  Cleaning = 3,
+  Maintenance = 4,
+  OutOfService = 5,
+  Reserved = 6,
+}
+
+export const RoomStatusLabels: Record<RoomStatus, string> = {
+  [RoomStatus.Available]: 'Available',
+  [RoomStatus.Occupied]: 'Occupied',
+  [RoomStatus.Cleaning]: 'Needs cleaning',
+  [RoomStatus.Maintenance]: 'Maintenance',
+  [RoomStatus.OutOfService]: 'Out of service',
+  [RoomStatus.Reserved]: 'Reserved',
+};
+
+export const RoomStatusColors: Record<RoomStatus, string> = {
+  [RoomStatus.Available]: '#15803d',
+  [RoomStatus.Occupied]: '#1d4ed8',
+  [RoomStatus.Cleaning]: '#b45309',
+  [RoomStatus.Maintenance]: '#9f1239',
+  [RoomStatus.OutOfService]: '#6b7280',
+  [RoomStatus.Reserved]: '#7c3aed',
+};
+
+export enum RoomType {
+  Single = 1,
+  Double = 2,
+  Twin = 3,
+  Triple = 4,
+  Suite = 5,
+  Deluxe = 6,
+  Presidential = 7,
+  Studio = 8,
+  Family = 9,
+  Accessible = 10,
+}
+
+export interface Room {
+  id: number;
+  hotelId: number;
+  roomNumber: string;
+  type: RoomType;
+  floor: number;
+  capacity: number;
+  status: RoomStatus;
+  isActive: boolean;
+  lastCleaned?: string | null;
+  notes?: string | null;
+}
+
+export enum HousekeepingTaskType {
+  CleanRoom = 1,
+  ChangeLinen = 2,
+  DeepClean = 3,
+  Maintenance = 4,
+  Inspection = 5,
+  TurnDown = 6,
+}
+
+export const HousekeepingTaskTypeLabels: Record<HousekeepingTaskType, string> = {
+  [HousekeepingTaskType.CleanRoom]: 'Clean room',
+  [HousekeepingTaskType.ChangeLinen]: 'Change linen',
+  [HousekeepingTaskType.DeepClean]: 'Deep clean',
+  [HousekeepingTaskType.Maintenance]: 'Maintenance',
+  [HousekeepingTaskType.Inspection]: 'Inspection',
+  [HousekeepingTaskType.TurnDown]: 'Turn-down',
+};
+
+export enum HousekeepingTaskPriority {
+  Low = 1,
+  Normal = 2,
+  High = 3,
+  Urgent = 4,
+}
+
+export enum HousekeepingTaskStatus {
+  Pending = 1,
+  InProgress = 2,
+  Completed = 3,
+  Cancelled = 4,
+  NeedsInspection = 5,
+}
+
+export interface HousekeepingTask {
+  id: number;
+  roomId: number;
+  roomNumber: string;
+  hotelId: number;
+  assignedToUserId?: string | null;
+  assignedToName?: string | null;
+  type: HousekeepingTaskType;
+  priority: HousekeepingTaskPriority;
+  status: HousekeepingTaskStatus;
+  scheduledFor: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  notes?: string | null;
+  durationMinutes?: number | null;
+}
+
+export interface HousekeepingSchedule {
+  date: string;
+  tasks: HousekeepingTask[];
 }
