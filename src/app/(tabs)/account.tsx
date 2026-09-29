@@ -1,8 +1,22 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { router } from 'expo-router';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
-import { Avatar, Button, Card, Icon, KeyValue, ListRow, SectionHeader, Skeleton, Text, useScreenStyles } from '@/components';
+import { useState } from 'react';
+import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
+import {
+  Avatar,
+  Button,
+  Card,
+  Icon,
+  KeyValue,
+  ListRow,
+  SectionHeader,
+  Skeleton,
+  Text,
+  useScreenStyles,
+  useToast,
+} from '@/components';
 import { useUnreadCount } from '@/features/notifications/hooks';
+import { useAppLock } from '@/lib/appLock';
 import { useAuth } from '@/lib/auth';
 import { haptics } from '@/lib/haptics';
 import { useHotel } from '@/lib/hotel';
@@ -101,6 +115,7 @@ export default function AccountScreen() {
           title="Change password"
           onPress={() => router.push('/change-password')}
         />
+        <AppLockRow />
       </Card>
 
       <SectionHeader title="Notifications" />
@@ -217,5 +232,60 @@ function HotelPicker() {
         })}
       </Card>
     </>
+  );
+}
+
+/** Off by default; only offered when the phone has a fingerprint / face set up */
+function AppLockRow() {
+  const { colors } = useTheme();
+  const toast = useToast();
+  const { biometrics, enabled, setEnabled } = useAppLock();
+  const [busy, setBusy] = useState(false);
+  if (!biometrics.available) return null;
+
+  const toggle = async (on: boolean) => {
+    setBusy(true);
+    try {
+      if (await setEnabled(on)) {
+        haptics.success();
+        toast.show(on ? `The app now asks for ${biometrics.label}` : 'App lock turned off');
+      }
+    } catch {
+      toast.show('Could not change the app lock', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.md,
+        minHeight: 52,
+        paddingHorizontal: space.lg,
+        paddingVertical: space.sm,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+      }}
+    >
+      <Icon ios={biometrics.icon.ios} android={biometrics.icon.android} size={20} color={colors.textMuted} />
+      <View style={{ flex: 1 }}>
+        <Text variant="body" weight="500">
+          Unlock with {biometrics.label}
+        </Text>
+        <Text variant="caption" color="subtle">
+          When opening the app or after 5 minutes away
+        </Text>
+      </View>
+      <Switch
+        value={enabled}
+        disabled={busy}
+        onValueChange={(on) => void toggle(on)}
+        trackColor={{ true: colors.primary, false: colors.surfaceAlt }}
+        accessibilityLabel={`Unlock with ${biometrics.label}`}
+      />
+    </View>
   );
 }

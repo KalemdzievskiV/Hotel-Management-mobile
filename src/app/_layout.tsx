@@ -3,6 +3,8 @@ import { Stack, ThemeProvider, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { EmptyState, LoadingScreen, OfflineBanner, ToastProvider } from '@/components';
 import { usePushNotifications } from '@/features/notifications/usePushNotifications';
+import { LockScreen } from '@/components/LockScreen';
+import { AppLockProvider } from '@/lib/appLock';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { HotelProvider } from '@/lib/hotel';
 import { persistMaxAge, queryClient, queryPersister } from '@/lib/query';
@@ -63,9 +65,12 @@ export default function RootLayout() {
         <ToastProvider>
           <AuthProvider>
             <HotelProvider>
-              <StatusBar style={theme.dark ? 'light' : 'dark'} />
-              <RootStack />
-              <OfflineBanner />
+              <AppLockProvider>
+                <StatusBar style={theme.dark ? 'light' : 'dark'} />
+                <RootStack />
+                <OfflineBanner />
+                <LockScreen />
+              </AppLockProvider>
             </HotelProvider>
           </AuthProvider>
         </ToastProvider>

@@ -25,7 +25,8 @@ as before. The tabs depend on the role:
 - **Housekeepers**: Housekeeping (their own and unassigned tasks, Start → Mark done) and Rooms
 - **Guests**: their bookings, and the hotels list
 - **Account** (everyone): who's signed in, the hotel (staff with several hotels pick one here),
-  the app version and build, and sign out
+  notifications, an optional fingerprint / Face ID lock (asked when the app opens and after
+  5 minutes away), the app version and build, and sign out
 
 Pull down to refresh any list; lists also refresh when you come back to them or to the app.
 What was loaded last is saved on the device for a day (cleared on sign-out), so lists appear
