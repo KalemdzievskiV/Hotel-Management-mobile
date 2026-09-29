@@ -206,7 +206,7 @@ function DetailsStep({
       },
       {
         onSuccess: (reservation) => {
-          toast.show(`Room ${room.roomNumber} is now occupied`);
+          toast.celebrate('Checked in', `Room ${room.roomNumber} is now occupied`);
           router.replace(`/reservations/${reservation.id}`);
         },
         onError: (e) => Alert.alert('Could not check in', errorText(e)),

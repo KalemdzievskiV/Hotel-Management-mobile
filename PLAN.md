@@ -212,7 +212,7 @@ Notes from building it:
 - [x] B6 push + in-app notification list, per-type toggles in settings (2026-09-29)
 - [x] Deep links (`hotelmgmt://reservations/123`), so a push tap opens the booking (2026-09-29)
 - [x] Biometric unlock (optional, off by default) (2026-09-29)
-- [ ] Animations: shared transitions list → detail, tab bar blur, success animations
+- [x] Animations: success moments, lists and details easing in (2026-09-29). Shared list → detail transitions and the tab bar blur were left out, see the notes
 - [ ] Accessibility pass (VoiceOver/TalkBack, dynamic type at 200%)
 - [ ] App icon, splash and store screenshots in the new visual style
 
@@ -225,6 +225,10 @@ Notes from building it:
 - Deep links needed no extra code: Expo Router already maps `hotelmgmt://<route>`, and the sign-in gate covers links opened while signed out. Pushes carry ids, not URLs; the app turns them into routes (`notificationHref`).
 - Hotels have no time zone yet, so the dates in push texts are the booking's wall-clock dates.
 - App lock (Account → "Unlock with Fingerprint / Face ID"): asks when the app opens and after 5 minutes in the background; the phone's PIN works as a fallback, and "Sign out" is always offered. It's per phone and per user, turned on only after a successful scan, and turned off by signing out. It covers the screen only: the session and tokens are unchanged, so it's a privacy lock, not extra protection for the stored tokens. A sheet that was open when the app went to the background can show above it until closed. Face ID needs an iOS build (not Expo Go).
+- Animations use React Native's own `Animated` (native driver), like the toasts and skeletons already did: no Reanimated, so no new dependency. They follow the phone's "reduce motion" setting (things fade in without moving). `src/lib/motion.ts` holds the timings; `src/components/Motion.tsx` has `FadeIn` and `SuccessMark`.
+  - **Success moments**: `toast.celebrate(title, detail)` pops a check in the middle of the screen (with the success haptic) for check-in, check-out, walk-in, a new reservation and a recorded payment. Smaller things (tasks, VIP, settings) keep the top toast, so a housekeeper finishing twenty rooms isn't shown twenty celebrations. The guest's "Request sent" screen uses the same check.
+  - **Lists and details**: booking, trip, hotel and task rows fade in one after another (only the first 8 are staggered), and so do the booking screen's cards. A task that moves to another section fades in there, which shows where it went.
+  - **Not done**: shared-element transitions (list card morphing into the detail header) are still experimental in Reanimated 4, behind a feature flag. A tab bar blur needs every screen wrapped in a blur target on Android, where the app is used; on iOS it would also need every list to pad for a see-through tab bar. Both cost more than they give for now.
 
 ### Phase 4: Release hardening (≈1 week)
 - [ ] Private upload key; Play Store internal testing track (README notes the debug-key limitation)

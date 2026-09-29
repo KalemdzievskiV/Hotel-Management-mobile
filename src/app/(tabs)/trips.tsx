@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { RefreshControl, SectionList, View } from 'react-native';
-import { Card, EmptyState, ErrorState, Icon, SectionHeader, SkeletonList, Text, useScreenStyles } from '@/components';
+import { Card, EmptyState, ErrorState, FadeIn, Icon, SectionHeader, SkeletonList, Text, useScreenStyles } from '@/components';
 import { parseDay } from '@/features/booking/search';
 import { useHotels } from '@/features/hotels/hooks';
 import { ReservationCard, StatusBadge } from '@/features/reservations/components';
@@ -75,7 +75,11 @@ export default function TripsScreen() {
         )
       }
       renderSectionHeader={({ section }) => <SectionHeader title={section.title} count={section.data.length} />}
-      renderItem={({ item }) => <ReservationCard reservation={item} perspective="guest" onPress={() => open(item)} />}
+      renderItem={({ item, index }) => (
+        <FadeIn index={index}>
+          <ReservationCard reservation={item} perspective="guest" onPress={() => open(item)} />
+        </FadeIn>
+      )}
     />
   );
 }

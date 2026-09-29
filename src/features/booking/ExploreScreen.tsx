@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { EmptyState, ErrorState, SkeletonList, Text, TextField, useScreenStyles } from '@/components';
+import { EmptyState, ErrorState, FadeIn, SkeletonList, Text, TextField, useScreenStyles } from '@/components';
 import { useHotels } from '@/features/hotels/hooks';
 import { useAuth } from '@/lib/auth';
 import { errorText } from '@/lib/http';
@@ -103,16 +103,18 @@ export function ExploreScreen() {
             />
           )
         }
-        renderItem={({ item: { hotel, query } }) => (
-          <HotelCard
-            hotel={hotel}
-            rooms={query.data}
-            loading={query.isPending && query.fetchStatus !== 'idle'}
-            search={search}
-            onPress={() =>
-              router.push({ pathname: '/hotels/[id]', params: { id: String(hotel.id), ...searchToParams(search) } })
-            }
-          />
+        renderItem={({ item: { hotel, query }, index }) => (
+          <FadeIn index={index}>
+            <HotelCard
+              hotel={hotel}
+              rooms={query.data}
+              loading={query.isPending && query.fetchStatus !== 'idle'}
+              search={search}
+              onPress={() =>
+                router.push({ pathname: '/hotels/[id]', params: { id: String(hotel.id), ...searchToParams(search) } })
+              }
+            />
+          </FadeIn>
         )}
       />
       <SearchSheet

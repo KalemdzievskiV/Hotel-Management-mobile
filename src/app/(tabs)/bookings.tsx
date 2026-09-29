@@ -4,6 +4,7 @@ import { ActivityIndicator, FlatList, RefreshControl, ScrollView, View } from 'r
 import {
   Chip,
   EmptyState,
+  FadeIn,
   ErrorState,
   HotelLine,
   SkeletonList,
@@ -135,8 +136,10 @@ function Bookings({ hotel }: { hotel: Hotel }) {
           </Text>
         ) : null
       }
-      renderItem={({ item }) => (
-        <ReservationCard reservation={item} perspective="desk" onPress={() => router.push(`/reservations/${item.id}`)} />
+      renderItem={({ item, index }) => (
+        <FadeIn index={index}>
+          <ReservationCard reservation={item} perspective="desk" onPress={() => router.push(`/reservations/${item.id}`)} />
+        </FadeIn>
       )}
     />
   );

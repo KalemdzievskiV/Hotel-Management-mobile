@@ -7,11 +7,13 @@ import {
   Card,
   Divider,
   EmptyState,
+  FadeIn,
   ErrorState,
   Icon,
   KeyValue,
   SectionHeader,
   SkeletonList,
+  SuccessMark,
   Text,
   TextField,
   useScreenStyles,
@@ -28,7 +30,7 @@ import { useHotelDetail } from '@/features/hotels/hooks';
 import { formatMoney } from '@/lib/format';
 import { errorText } from '@/lib/http';
 import { BookingType, RoomTypeLabels, type Reservation } from '@/lib/types';
-import { makeStyles, radius, space, useTheme } from '@/theme';
+import { makeStyles, radius, space } from '@/theme';
 
 const MAX_REQUESTS = 1000;
 
@@ -160,31 +162,20 @@ export default function BookScreen() {
 /** After booking: it waits for the hotel to confirm it */
 function Booked({ reservation: r }: { reservation: Reservation }) {
   const screen = useScreenStyles();
-  const { colors } = useTheme();
   return (
     <View style={[screen.screen, { justifyContent: 'center', padding: space.xl, gap: space.lg }]}>
       <Stack.Screen options={{ title: 'Booked', headerBackVisible: false, gestureEnabled: false }} />
-      <View
-        style={{
-          alignSelf: 'center',
-          width: 72,
-          height: 72,
-          borderRadius: radius.pill,
-          backgroundColor: colors.tones.success.bg,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Icon ios="checkmark" android="check" size={36} color={colors.tones.success.fg} />
+      <View style={{ alignSelf: 'center' }}>
+        <SuccessMark size={72} />
       </View>
-      <View style={{ gap: space.sm }}>
+      <FadeIn index={3} style={{ gap: space.sm }}>
         <Text variant="display" align="center">
           Request sent
         </Text>
         <Text variant="body" color="muted" align="center">
           {r.hotelName ?? 'The hotel'} will confirm your booking #{r.id} soon. You can follow it in Trips.
         </Text>
-      </View>
+      </FadeIn>
       <View style={{ gap: space.sm }}>
         <Button title="View booking" onPress={() => router.replace(`/reservations/${r.id}`)} />
         <Button

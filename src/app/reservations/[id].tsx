@@ -9,6 +9,7 @@ import {
   Chip,
   Divider,
   ErrorState,
+  FadeIn,
   Icon,
   KeyValue,
   SectionHeader,
@@ -88,9 +89,10 @@ export default function ReservationScreen() {
   }
   const r = reservation.data;
 
-  const run = (call: () => Promise<Reservation>, done: string) =>
+  // With a `detail`, the big "done" moment in the middle of the screen instead of a toast
+  const run = (call: () => Promise<Reservation>, done: string, detail?: string) =>
     action.mutate(call, {
-      onSuccess: () => toast.show(done),
+      onSuccess: () => (detail ? toast.celebrate(done, detail) : toast.show(done)),
       onError: (e) => Alert.alert('Could not update', errorText(e)),
     });
 
@@ -99,7 +101,7 @@ export default function ReservationScreen() {
     if (r.remainingAmount > 0) return setCheckingOut(true);
     action.mutate(() => reservationsApi.checkOut(r.id), {
       onSuccess: () => {
-        toast.show(`Room ${r.roomNumber} checked out`);
+        toast.celebrate('Checked out', `Room ${r.roomNumber}`);
         setJustLeft(true);
       },
       onError: (e) => Alert.alert('Could not check out', errorText(e)),
@@ -110,7 +112,7 @@ export default function ReservationScreen() {
     checkout.mutate(payment, {
       onSuccess: () => {
         setCheckingOut(false);
-        toast.show(payment.amount > 0 ? `Paid ${formatMoney(payment.amount)} · checked out` : 'Checked out');
+        toast.celebrate('Checked out', payment.amount > 0 ? `Paid ${formatMoney(payment.amount)} · room ${r.roomNumber}` : `Room ${r.roomNumber}`);
         setJustLeft(true);
       },
       onError: (e) => Alert.alert('Could not check out', errorText(e)),
@@ -163,7 +165,7 @@ export default function ReservationScreen() {
     : r.status === ReservationStatus.Pending
       ? { title: 'Confirm booking', onPress: () => run(() => reservationsApi.confirm(r.id), 'Booking confirmed') }
       : r.canCheckIn
-        ? { title: 'Check in', onPress: () => run(() => reservationsApi.checkIn(r.id), 'Checked in') }
+        ? { title: 'Check in', onPress: () => run(() => reservationsApi.checkIn(r.id), 'Checked in', r.guestName ? `Room ${r.roomNumber} · ${r.guestName}` : `Room ${r.roomNumber}`) }
         : r.canCheckOut
           ? { title: r.remainingAmount > 0 ? `Check out · ${formatMoney(r.remainingAmount)} due` : 'Check out', onPress: startCheckOut }
           : null;
@@ -187,126 +189,132 @@ export default function ReservationScreen() {
         contentContainerStyle={[screen.content, primary && { paddingBottom: 110 + insets.bottom }]}
         refreshControl={<RefreshControl {...pull} tintColor={colors.primary} colors={[colors.primary]} />}
       >
-        <Card style={{ gap: space.md }}>
-          <View style={screen.row}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, flex: 1 }}>
-              {canManage && <Avatar name={r.guestName ?? ''} size={48} />}
-              <View style={{ flex: 1 }}>
-                <Text
-                  variant="title"
-                  numberOfLines={2}
-                  onPress={canManage ? () => router.push(`/guests/${r.guestId}`) : undefined}
-                  accessibilityRole={canManage ? 'link' : undefined}
-                  accessibilityHint={canManage ? "Opens the guest's profile" : undefined}
-                >
-                  {canManage ? (r.guestName ?? `Booking #${r.id}`) : (r.hotelName ?? `Booking #${r.id}`)}
-                </Text>
-                <Text variant="callout" color="muted">
-                  Booking #{r.id}
-                </Text>
+        <FadeIn index={0}>
+          <Card style={{ gap: space.md }}>
+            <View style={screen.row}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, flex: 1 }}>
+                {canManage && <Avatar name={r.guestName ?? ''} size={48} />}
+                <View style={{ flex: 1 }}>
+                  <Text
+                    variant="title"
+                    numberOfLines={2}
+                    onPress={canManage ? () => router.push(`/guests/${r.guestId}`) : undefined}
+                    accessibilityRole={canManage ? 'link' : undefined}
+                    accessibilityHint={canManage ? "Opens the guest's profile" : undefined}
+                  >
+                    {canManage ? (r.guestName ?? `Booking #${r.id}`) : (r.hotelName ?? `Booking #${r.id}`)}
+                  </Text>
+                  <Text variant="callout" color="muted">
+                    Booking #{r.id}
+                  </Text>
+                </View>
               </View>
+              <StatusBadge status={r.status} />
             </View>
-            <StatusBadge status={r.status} />
-          </View>
-          <View style={styles.facts}>
-            <Fact icon={{ ios: 'calendar', android: 'calendar_month' }} text={formatStay(r)} />
-            <Fact icon={{ ios: 'bed.double', android: 'bed' }} text={`Room ${r.roomNumber}${canManage ? '' : ` · ${r.hotelName}`}`} />
-            <Fact
-              icon={{ ios: 'person.2', android: 'group' }}
-              text={`${r.numberOfGuests} guest${r.numberOfGuests === 1 ? '' : 's'}`}
-            />
-          </View>
-        </Card>
+            <View style={styles.facts}>
+              <Fact icon={{ ios: 'calendar', android: 'calendar_month' }} text={formatStay(r)} />
+              <Fact icon={{ ios: 'bed.double', android: 'bed' }} text={`Room ${r.roomNumber}${canManage ? '' : ` · ${r.hotelName}`}`} />
+              <Fact
+                icon={{ ios: 'person.2', android: 'group' }}
+                text={`${r.numberOfGuests} guest${r.numberOfGuests === 1 ? '' : 's'}`}
+              />
+            </View>
+          </Card>
+        </FadeIn>
 
         {justLeft && r.status === ReservationStatus.CheckedOut && (
-          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.tones.warning.bg }}>
-            <Icon ios="sparkles" android="cleaning_services" size={22} color={colors.tones.warning.fg} />
-            <View style={{ flex: 1 }}>
-              <Text variant="headline" color="warning">
-                Room {r.roomNumber} needs cleaning
-              </Text>
-              <Text variant="callout" color="warning">
-                Give it to housekeeping now?
-              </Text>
-            </View>
-            <Button title="Create task" size="sm" onPress={() => setAddingTask(true)} />
-          </Card>
+          <FadeIn>
+            <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.tones.warning.bg }}>
+              <Icon ios="sparkles" android="cleaning_services" size={22} color={colors.tones.warning.fg} />
+              <View style={{ flex: 1 }}>
+                <Text variant="headline" color="warning">
+                  Room {r.roomNumber} needs cleaning
+                </Text>
+                <Text variant="callout" color="warning">
+                  Give it to housekeeping now?
+                </Text>
+              </View>
+              <Button title="Create task" size="sm" onPress={() => setAddingTask(true)} />
+            </Card>
+          </FadeIn>
         )}
 
         <SectionHeader title="Payment" />
-        <Card style={{ gap: space.sm }}>
-          {cancelled ? (
-            // The API still counts the total as owed; nobody owes anything for a cancelled stay
-            <View style={screen.row}>
-              <Text variant="body" color="muted">
-                {r.depositAmount > 0 ? 'Paid, to be refunded' : 'Balance'}
-              </Text>
-              <Text variant="title" color={r.depositAmount > 0 ? 'info' : 'muted'}>
-                {r.depositAmount > 0 ? formatMoney(r.depositAmount) : 'Nothing to pay'}
-              </Text>
-            </View>
-          ) : (
-            <>
+        <FadeIn index={1}>
+          <Card style={{ gap: space.sm }}>
+            {cancelled ? (
+              // The API still counts the total as owed; nobody owes anything for a cancelled stay
               <View style={screen.row}>
                 <Text variant="body" color="muted">
-                  {r.remainingAmount > 0 ? 'Balance due' : 'Balance'}
+                  {r.depositAmount > 0 ? 'Paid, to be refunded' : 'Balance'}
                 </Text>
-                <Text variant="title" color={r.remainingAmount > 0 ? 'warning' : 'success'}>
-                  {r.remainingAmount > 0 ? formatMoney(r.remainingAmount) : 'Paid in full'}
+                <Text variant="title" color={r.depositAmount > 0 ? 'info' : 'muted'}>
+                  {r.depositAmount > 0 ? formatMoney(r.depositAmount) : 'Nothing to pay'}
                 </Text>
               </View>
-              <View style={styles.progressTrack} accessibilityLabel={`${Math.round(paidShare * 100)}% paid`}>
-                <View style={[styles.progressFill, { width: `${paidShare * 100}%` }]} />
-              </View>
-            </>
-          )}
-          <View style={screen.row}>
-            <Text variant="caption" color="subtle">
-              Paid {formatMoney(r.depositAmount)}
-            </Text>
-            <Text variant="caption" color="subtle">
-              Total {formatMoney(r.totalAmount)}
-            </Text>
-          </View>
-
-          {!canManage && r.remainingAmount > 0 && !cancelled && (
-            <Text variant="caption" color="muted">
-              You pay the hotel when you arrive.
-            </Text>
-          )}
-
-          {(payments.data?.length ?? 0) > 0 && (
-            <>
-              <Divider />
-              {payments.data!.map((p) => (
-                <PaymentLine key={p.id} payment={p} />
-              ))}
-            </>
-          )}
-
-          {(canPay || canRefund) && (
-            <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
-              {canPay && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  title="Record payment"
-                  icon={{ ios: 'plus', android: 'add' }}
-                  onPress={() => setPaying(true)}
-                />
-              )}
-              {canRefund && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  title="Refund"
-                  icon={{ ios: 'arrow.uturn.backward', android: 'undo' }}
-                  onPress={() => setRefunding(true)}
-                />
-              )}
+            ) : (
+              <>
+                <View style={screen.row}>
+                  <Text variant="body" color="muted">
+                    {r.remainingAmount > 0 ? 'Balance due' : 'Balance'}
+                  </Text>
+                  <Text variant="title" color={r.remainingAmount > 0 ? 'warning' : 'success'}>
+                    {r.remainingAmount > 0 ? formatMoney(r.remainingAmount) : 'Paid in full'}
+                  </Text>
+                </View>
+                <View style={styles.progressTrack} accessibilityLabel={`${Math.round(paidShare * 100)}% paid`}>
+                  <View style={[styles.progressFill, { width: `${paidShare * 100}%` }]} />
+                </View>
+              </>
+            )}
+            <View style={screen.row}>
+              <Text variant="caption" color="subtle">
+                Paid {formatMoney(r.depositAmount)}
+              </Text>
+              <Text variant="caption" color="subtle">
+                Total {formatMoney(r.totalAmount)}
+              </Text>
             </View>
-          )}
-        </Card>
+  
+            {!canManage && r.remainingAmount > 0 && !cancelled && (
+              <Text variant="caption" color="muted">
+                You pay the hotel when you arrive.
+              </Text>
+            )}
+  
+            {(payments.data?.length ?? 0) > 0 && (
+              <>
+                <Divider />
+                {payments.data!.map((p) => (
+                  <PaymentLine key={p.id} payment={p} />
+                ))}
+              </>
+            )}
+  
+            {(canPay || canRefund) && (
+              <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
+                {canPay && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    title="Record payment"
+                    icon={{ ios: 'plus', android: 'add' }}
+                    onPress={() => setPaying(true)}
+                  />
+                )}
+                {canRefund && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title="Refund"
+                    icon={{ ios: 'arrow.uturn.backward', android: 'undo' }}
+                    onPress={() => setRefunding(true)}
+                  />
+                )}
+              </View>
+            )}
+          </Card>
+        </FadeIn>
 
         {!canManage && (
           <>
@@ -524,7 +532,7 @@ function PaymentForm({ reservation, onDone }: { reservation: Reservation; onDone
       { amount: value, method, reference: reference.trim() || undefined },
       {
         onSuccess: () => {
-          toast.show(`Payment of ${formatMoney(value)} recorded`);
+          toast.celebrate('Payment recorded', formatMoney(value));
           onDone();
         },
         onError: (e) => Alert.alert('Could not record the payment', errorText(e)),

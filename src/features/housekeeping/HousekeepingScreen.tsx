@@ -7,6 +7,7 @@ import {
   Card,
   EmptyState,
   ErrorState,
+  FadeIn,
   HotelLine,
   Icon,
   SectionHeader,
@@ -203,26 +204,28 @@ function HousekeepingBoard({ hotel }: { hotel: Hotel }) {
           renderSectionHeader={({ section }) =>
             section.data.length > 0 ? <SectionHeader title={section.title} count={section.data.length} /> : null
           }
-          renderItem={({ item }) => (
-            <SwipeableRow
-              disabled={taskAction.isPending}
-              action={
-                item.status === HousekeepingTaskStatus.Pending
-                  ? { label: 'Start', tone: 'info', icon: { ios: 'play.fill', android: 'play_arrow' }, onSwipe: () => act(item, 'start') }
-                  : item.status === HousekeepingTaskStatus.InProgress || item.status === HousekeepingTaskStatus.NeedsInspection
-                    ? { label: 'Done', tone: 'success', icon: { ios: 'checkmark', android: 'check' }, onSwipe: () => act(item, 'complete') }
-                    : undefined
-              }
-            >
-              <TaskCard
-                task={item}
-                busy={taskAction.isPending && taskAction.variables?.task.id === item.id}
+          renderItem={({ item, index }) => (
+            <FadeIn index={index}>
+              <SwipeableRow
                 disabled={taskAction.isPending}
-                onStart={() => act(item, 'start')}
-                onComplete={() => act(item, 'complete')}
-                onAssign={canManage ? () => setAssigning(item) : undefined}
-              />
-            </SwipeableRow>
+                action={
+                  item.status === HousekeepingTaskStatus.Pending
+                    ? { label: 'Start', tone: 'info', icon: { ios: 'play.fill', android: 'play_arrow' }, onSwipe: () => act(item, 'start') }
+                    : item.status === HousekeepingTaskStatus.InProgress || item.status === HousekeepingTaskStatus.NeedsInspection
+                      ? { label: 'Done', tone: 'success', icon: { ios: 'checkmark', android: 'check' }, onSwipe: () => act(item, 'complete') }
+                      : undefined
+                }
+              >
+                <TaskCard
+                  task={item}
+                  busy={taskAction.isPending && taskAction.variables?.task.id === item.id}
+                  disabled={taskAction.isPending}
+                  onStart={() => act(item, 'start')}
+                  onComplete={() => act(item, 'complete')}
+                  onAssign={canManage ? () => setAssigning(item) : undefined}
+                />
+              </SwipeableRow>
+            </FadeIn>
           )}
         />
       )}

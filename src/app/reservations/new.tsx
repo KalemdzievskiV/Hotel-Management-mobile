@@ -211,7 +211,7 @@ function ConfirmStep({
         specialRequests: requests.trim() || undefined,
         notes: notes.trim() || undefined,
       });
-      toast.show(`Booked room ${room.roomNumber} for ${guestChoiceName(guest)}`);
+      toast.celebrate('Booked', `Room ${room.roomNumber} for ${guestChoiceName(guest)}`);
       router.replace(`/reservations/${reservation.id}`);
     } catch (e) {
       setCreatingGuest(false);

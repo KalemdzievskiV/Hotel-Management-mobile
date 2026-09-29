@@ -1,10 +1,11 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, View } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { haptics } from '@/lib/haptics';
 import { radius, space, useTheme } from '@/theme';
 import { palettes } from '@/theme/tokens';
 import { Icon } from './Icon';
+import { SuccessMark } from './Motion';
 import { Text } from './Text';
 
 type ToastKind = 'success' | 'error' | 'info';
@@ -17,6 +18,8 @@ interface ToastMessage {
 
 interface ToastContextValue {
   show: (text: string, kind?: ToastKind) => void;
+  /** For the big moments (checked in, paid, booked): a check in the middle of the screen */
+  celebrate: (title: string, detail?: string) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -30,6 +33,7 @@ const ICONS = {
 /** Short confirmations that slide in at the top: "Checked in", "Payment recorded" */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState<ToastMessage | null>(null);
+  const [celebration, setCelebration] = useState<Celebration | null>(null);
   const nextId = useRef(1);
 
   const show = useCallback((text: string, kind: ToastKind = 'success') => {
@@ -38,13 +42,87 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setMessage({ id: nextId.current++, text, kind });
   }, []);
 
-  const value = useMemo(() => ({ show }), [show]);
+  const celebrate = useCallback((title: string, detail?: string) => {
+    haptics.success();
+    setCelebration({ id: nextId.current++, title, detail });
+  }, []);
+
+  const value = useMemo(() => ({ show, celebrate }), [show, celebrate]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
       {message && <ToastView key={message.id} message={message} onDone={() => setMessage(null)} />}
+      {celebration && (
+        <CelebrationView key={celebration.id} celebration={celebration} onDone={() => setCelebration(null)} />
+      )}
     </ToastContext.Provider>
+  );
+}
+
+interface Celebration {
+  id: number;
+  title: string;
+  detail?: string;
+}
+
+/** The big "done" moments: a check pops in the middle of the screen, then fades away by itself */
+function CelebrationView({ celebration, onDone }: { celebration: Celebration; onDone: () => void }) {
+  const { colors } = useTheme();
+  const [visible] = useState(() => new Animated.Value(0));
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  });
+
+  useEffect(() => {
+    const animation = Animated.sequence([
+      Animated.timing(visible, { toValue: 1, duration: 150, useNativeDriver: true }),
+      Animated.delay(1100),
+      Animated.timing(visible, { toValue: 0, duration: 250, useNativeDriver: true }),
+    ]);
+    animation.start(({ finished }) => finished && onDoneRef.current());
+    return () => animation.stop();
+  }, [visible]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      accessibilityLiveRegion="polite"
+      accessibilityRole="alert"
+      accessibilityLabel={celebration.detail ? `${celebration.title}. ${celebration.detail}` : celebration.title}
+      style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', opacity: visible }]}
+    >
+      <View
+        style={{
+          alignItems: 'center',
+          gap: space.md,
+          paddingVertical: space.xl,
+          paddingHorizontal: space.xl,
+          minWidth: 200,
+          maxWidth: '80%',
+          borderRadius: radius.lg,
+          backgroundColor: colors.surface,
+          shadowColor: '#000',
+          shadowOpacity: 0.18,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 8,
+        }}
+      >
+        <SuccessMark size={64} />
+        <View style={{ alignItems: 'center', gap: 2 }}>
+          <Text variant="headline" align="center">
+            {celebration.title}
+          </Text>
+          {celebration.detail && (
+            <Text variant="callout" color="muted" align="center">
+              {celebration.detail}
+            </Text>
+          )}
+        </View>
+      </View>
+    </Animated.View>
   );
 }
 

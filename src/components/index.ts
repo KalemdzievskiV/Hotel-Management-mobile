@@ -9,6 +9,7 @@ export { Icon } from './Icon';
 export { KpiCard } from './KpiCard';
 export { Divider, KeyValue, SectionHeader, useScreenStyles } from './Layout';
 export { ListRow } from './ListRow';
+export { FadeIn, SuccessMark } from './Motion';
 export { OfflineBanner } from './OfflineBanner';
 export { SegmentedControl } from './SegmentedControl';
 export { ActionSheet, Sheet, type SheetAction } from './Sheet';
