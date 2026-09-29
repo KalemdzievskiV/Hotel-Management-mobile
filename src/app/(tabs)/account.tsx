@@ -2,6 +2,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { router } from 'expo-router';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { Avatar, Button, Card, Icon, KeyValue, ListRow, SectionHeader, Skeleton, Text, useScreenStyles } from '@/components';
+import { useUnreadCount } from '@/features/notifications/hooks';
 import { useAuth } from '@/lib/auth';
 import { haptics } from '@/lib/haptics';
 import { useHotel } from '@/lib/hotel';
@@ -27,6 +28,7 @@ const ROLE_LABELS: Record<string, string> = {
 export default function AccountScreen() {
   const screen = useScreenStyles();
   const { user, isStaff, canManage, logout } = useAuth();
+  const { data: unread } = useUnreadCount();
 
   const confirmLogout = () => {
     haptics.warning();
@@ -98,6 +100,23 @@ export default function AccountScreen() {
           icon={{ ios: 'key', android: 'key' }}
           title="Change password"
           onPress={() => router.push('/change-password')}
+        />
+      </Card>
+
+      <SectionHeader title="Notifications" />
+      <Card padded={false}>
+        <ListRow
+          first
+          icon={{ ios: 'bell', android: 'notifications' }}
+          title="Notifications"
+          detail={unread ? `${unread} unread` : 'All caught up'}
+          onPress={() => router.push('/notifications')}
+        />
+        <ListRow
+          icon={{ ios: 'slider.horizontal.3', android: 'tune' }}
+          title="Notification settings"
+          detail="Which updates buzz your phone"
+          onPress={() => router.push('/notification-settings')}
         />
       </Card>
 

@@ -46,6 +46,14 @@ jobs:
           grep -E '^EXPO_PUBLIC_API_URL=' .env >> "$GITHUB_ENV"
           echo "ANDROID_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
 
+      # Firebase config for push, from the GOOGLE_SERVICES_JSON repository secret (README →
+      # "Push notifications"). Without the secret the APK builds anyway, just without push.
+      - name: Firebase config
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.json; fi
+
       - run: npx expo prebuild --platform android --no-install
 
       - name: Build release APK (arm64)

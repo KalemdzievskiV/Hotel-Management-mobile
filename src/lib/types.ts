@@ -398,3 +398,35 @@ export const HousekeepingTaskPriorityLabels: Record<HousekeepingTaskPriority, st
   [HousekeepingTaskPriority.High]: 'High',
   [HousekeepingTaskPriority.Urgent]: 'Urgent',
 };
+
+// Notifications (GET /Notifications). Same numbers as the API's NotificationType.
+export enum NotificationType {
+  NewBooking = 1,
+  BookingCancelledByGuest = 2,
+  BookingConfirmed = 3,
+  BookingCancelled = 4,
+  TaskAssigned = 5,
+  TaskUrgent = 6,
+}
+
+export interface AppNotification {
+  id: number;
+  type: NotificationType;
+  title: string;
+  body: string;
+  hotelId?: number | null;
+  reservationId?: number | null;
+  housekeepingTaskId?: number | null;
+  createdAt: string;
+  readAt?: string | null;
+  isRead: boolean;
+}
+
+export interface NotificationPage extends PagedResult<AppNotification> {
+  unreadCount: number;
+}
+
+export interface NotificationPreference {
+  type: NotificationType;
+  pushEnabled: boolean;
+}

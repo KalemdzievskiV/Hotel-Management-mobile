@@ -5,6 +5,7 @@ import { ColorValue, Pressable, View } from 'react-native';
 import { ActionSheet } from '@/components';
 import { Icon, type AndroidSymbol, type IosSymbol } from '@/components/Icon';
 import { NewTaskSheet } from '@/features/housekeeping/components';
+import { NotificationBell } from '@/features/notifications/components';
 import { useAuth } from '@/lib/auth';
 import { haptics } from '@/lib/haptics';
 import { useHotel } from '@/lib/hotel';
@@ -44,6 +45,7 @@ export default function TabsLayout() {
           headerShadowVisible: false,
           headerStyle: { backgroundColor: colors.bg },
           sceneStyle: { backgroundColor: colors.bg },
+          headerRight: () => <NotificationBell />,
         }}
       >
         <Tabs.Protected guard={!isHousekeeper}>

@@ -105,10 +105,11 @@ function HousekeepingBoard({ hotel }: { hotel: Hotel }) {
     );
 
   // A + in the header adds a task; set on whichever navigator shows the board (tab or stack)
+  // (only for managers: an explicit undefined would hide the housekeeper tab's notification bell)
   useLayoutEffect(() => {
+    if (!canManage) return;
     navigation.setOptions({
-      headerRight: canManage
-        ? () => (
+      headerRight: () => (
             <Pressable
               onPress={() => setAdding(true)}
               hitSlop={10}
@@ -118,8 +119,7 @@ function HousekeepingBoard({ hotel }: { hotel: Hotel }) {
             >
               <Icon ios="plus.circle.fill" android="add_circle" size={26} color={colors.primary} />
             </Pressable>
-          )
-        : undefined,
+          ),
     });
   }, [navigation, canManage, colors.primary]);
 

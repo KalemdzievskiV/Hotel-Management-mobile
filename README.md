@@ -84,6 +84,45 @@ yourself, but the Play Store needs a private upload key. Set one up before publi
 EAS cloud builds (`eas.json`) still work but are slow on the free tier. iPhone builds need a
 paid Apple Developer account either way.
 
+## Push notifications
+
+The backend sends a push when something needs the user's attention: a guest booked online or
+cancelled (to the hotel's owner and managers), the hotel confirmed or cancelled a booking (to
+the guest), a task was assigned to someone or became urgent (to that person). Everything also
+appears in the in-app list (the bell in the header, or Account → Notifications), and each type's
+push can be turned off under Account → Notification settings. Tapping a push opens the booking
+or the housekeeping board.
+
+Pushes go through Expo's push service, which hands them to Firebase Cloud Messaging on Android.
+They only work in an installed APK: Expo Go on Android can't receive pushes (since SDK 53), and
+the browser preview has none. **Until the one-time Firebase setup below is done, the APK builds
+and runs normally but gets no pushes** (the in-app list still works).
+
+One-time setup (free):
+
+1. **Firebase project.** In the [Firebase console](https://console.firebase.google.com) create a
+   project, then *Add app → Android* with package name `com.vladimir.hotelmanagement`. Download
+   `google-services.json`.
+2. **Give the build the file.**
+   - Local builds (`npm run build:apk`) and `expo prebuild`: put it in the project root. It's
+     git-ignored; `app.config.js` picks it up when it's there.
+   - GitHub builds: add a repository secret `GOOGLE_SERVICES_JSON` (*Settings → Secrets and
+     variables → Actions*) with the file's contents. The workflow writes the file before building.
+3. **Let Expo send through Firebase.** In Firebase, *Project settings → Service accounts →
+   Generate new private key*. Upload that JSON to the Expo project: on expo.dev open the project
+   → *Credentials → Android → com.vladimir.hotelmanagement → FCM V1 service account key*, or run
+   `npx eas-cli@latest credentials` → Android → *Google Service Account* → *Push Notifications
+   (FCM V1)*. Keep the key private; don't commit it.
+4. **Build a new APK** and install it. After signing in, the app asks for permission to show
+   notifications and registers the phone with the backend.
+
+The backend needs nothing extra. If "Enhanced push security" is turned on for the Expo project,
+set `Push__ExpoAccessToken` on the backend (Railway variables). `Push__Enabled=false` stops
+sending while keeping the in-app list.
+
+Links open the same screens as pushes: `hotelmgmt://reservations/123` opens that booking
+(after signing in, if needed).
+
 ## Developing with Expo Go
 
 1. Install **Expo Go** from the App Store / Play Store.

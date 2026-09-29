@@ -41,7 +41,7 @@ fi
 
 # Regenerate android/ from scratch only when native config changes; otherwise update it in
 # place so Gradle can reuse what it already compiled
-native_hash="$(cat package-lock.json app.json app.config.js | sha256sum | cut -d' ' -f1)"
+native_hash="$(cat package-lock.json app.json app.config.js $([ -f google-services.json ] && echo google-services.json) | sha256sum | cut -d' ' -f1)"
 clean=""
 if [ "$(cat .build-stamps/native 2>/dev/null)" != "$native_hash" ] || [ ! -d android ]; then
   clean="--clean"

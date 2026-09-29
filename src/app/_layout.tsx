@@ -2,6 +2,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { Stack, ThemeProvider, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { EmptyState, LoadingScreen, OfflineBanner, ToastProvider } from '@/components';
+import { usePushNotifications } from '@/features/notifications/usePushNotifications';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { HotelProvider } from '@/lib/hotel';
 import { persistMaxAge, queryClient, queryPersister } from '@/lib/query';
@@ -10,6 +11,7 @@ import { useTheme } from '@/theme';
 function RootStack() {
   const { user, ready, isStaff, canManage } = useAuth();
   const { colors } = useTheme();
+  usePushNotifications();
   if (!ready) return <LoadingScreen />;
 
   return (
@@ -30,6 +32,8 @@ function RootStack() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="reservations/[id]" options={{ title: 'Booking', headerBackTitle: 'Back' }} />
         <Stack.Screen name="change-password" options={{ title: 'Change password', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="notifications" options={{ title: 'Notifications', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="notification-settings" options={{ title: 'Notification settings', headerBackTitle: 'Back' }} />
       </Stack.Protected>
       {/* The front desk */}
       <Stack.Protected guard={canManage}>

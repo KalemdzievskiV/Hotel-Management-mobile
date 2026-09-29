@@ -159,7 +159,7 @@ Split `lib/api.ts` by feature. Keep `types.ts` in step with the backend enums (a
 | B3 | ✅ Hotel-scoped queries: `?hotelId=` on `today/check-ins`, `today/check-outs`, stats; paging on `GET /Reservations` | The app currently downloads everything and filters on the phone | S |
 | B4 | ✅ **"Today" uses the hotel's local date**, not `DateTime.UtcNow.Date` (`ReservationsController.cs:418`) | Arrivals are wrong in the evening for hotels east/west of UTC | S–M |
 | B5 | ✅ `GET /Dashboard/today?hotelId=` returning all KPI numbers in one call | One request for the Today screen instead of ~6 | S |
-| B6 | Push: `DeviceToken` entity + `POST/DELETE /Notifications/devices`; a `PushService` calling Expo's push API on events (new guest booking → hotel managers; booking confirmed/cancelled → guest; task assigned/urgent → housekeeper) | Notifications | M |
+| B6 | ✅ Push: `DeviceToken` entity + `POST/DELETE /Notifications/devices`; a `PushService` calling Expo's push API on events (new guest booking → hotel managers; booking confirmed/cancelled → guest; task assigned/urgent → housekeeper) | Notifications | M |
 | B7 | Hotel photos + amenities + "price from" on the public hotel DTO (if not already there) | A good Explore screen | S–M |
 | B8 | ✅ Guest cancellation rules (e.g. only before check-in, only Pending/Confirmed) enforced server-side | Guests can cancel now; make sure it's safe | S |
 
@@ -209,12 +209,21 @@ Notes from building it:
 - Swipe rows are built on `PanResponder` (no gesture-handler/reanimated dependency), so Expo Go keeps working.
 
 ### Phase 3: Notifications & polish (≈1.5 weeks)
-- [ ] B6 push + in-app notification list, per-type toggles in settings
-- [ ] Deep links (`hotelmgmt://reservations/123`), so a push tap opens the booking
+- [x] B6 push + in-app notification list, per-type toggles in settings (2026-09-29)
+- [x] Deep links (`hotelmgmt://reservations/123`), so a push tap opens the booking (2026-09-29)
 - [ ] Biometric unlock (optional, off by default)
 - [ ] Animations: shared transitions list → detail, tab bar blur, success animations
 - [ ] Accessibility pass (VoiceOver/TalkBack, dynamic type at 200%)
 - [ ] App icon, splash and store screenshots in the new visual style
+
+Notes from building it:
+- Delivery needs the one-time Firebase setup in the README ("Push notifications"). Until then the APK builds and the in-app list works, but no pushes arrive.
+- Who gets what: a guest's online booking or cancellation → the hotel's owner and its Admins/Managers; the hotel confirming or cancelling → the guest (only guests with an account; walk-ins have none); a task assigned, or raised to Urgent → the assignee. Nobody is told about their own action.
+- The server saves every notification and queues the pushes; a background service sends them to Expo in batches of up to 100 and forgets tokens Expo reports as `DeviceNotRegistered`. Expo's delivery receipts aren't checked yet, so a failure after Expo accepted a push (e.g. bad FCM credentials) only shows in Expo's dashboard.
+- Settings switches turn off the push only; the list keeps everything.
+- A phone's token belongs to whoever signed in last, and sign-out removes it. If a session ends on its own (expired or revoked), the token stays with that user until someone signs in on the phone again.
+- Deep links needed no extra code: Expo Router already maps `hotelmgmt://<route>`, and the sign-in gate covers links opened while signed out. Pushes carry ids, not URLs; the app turns them into routes (`notificationHref`).
+- Hotels have no time zone yet, so the dates in push texts are the booking's wall-clock dates.
 
 ### Phase 4: Release hardening (≈1 week)
 - [ ] Private upload key; Play Store internal testing track (README notes the debug-key limitation)

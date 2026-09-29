@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { authApi, type Registration } from '@/features/auth/api';
+import { unregisterForPush } from '@/features/notifications/push';
 import { setSessionHandlers, setTokens } from './http';
 import { isTokenExpired, userIdFromToken } from './jwt';
 import { clearQueryCache } from './query';
@@ -76,6 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     const refreshToken = sessionRef.current?.refreshToken;
+    // While the session still works: this phone stops getting this user's pushes
+    await unregisterForPush();
     await endSession();
     // Best effort: the device has forgotten the session either way
     if (refreshToken) authApi.logout(refreshToken).catch(() => undefined);
