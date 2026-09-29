@@ -52,9 +52,14 @@ echo "$native_hash" > .build-stamps/native
 
 echo "==> Building release APK for $ARCHS (API: $EXPO_PUBLIC_API_URL)"
 cd android
+# Memory: with 8 workers and a separate Kotlin compiler JVM the build needs more RAM than a 16 GB
+# laptop has spare (the kernel kills Gradle). Two workers and Kotlin inside Gradle's JVM fit;
+# raise GRADLE_WORKERS on a bigger machine.
 ./gradlew assembleRelease \
   -PreactNativeArchitectures="$ARCHS" \
   -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
+  -Pkotlin.compiler.execution.strategy=in-process \
+  --max-workers="${GRADLE_WORKERS:-2}" \
   --build-cache --no-daemon
 
 version="$(node -p "require('/work/app.json').expo.version")"

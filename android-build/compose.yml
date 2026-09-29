@@ -10,6 +10,7 @@ services:
       # Optional overrides from the host; build.sh has the defaults
       - EXPO_PUBLIC_API_URL
       - ANDROID_ARCHS
+      - GRADLE_WORKERS
     volumes:
       - ..:/src
       # Kept between builds, so only the first one is slow
