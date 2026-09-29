@@ -298,3 +298,103 @@ export interface HousekeepingSchedule {
   date: string;
   tasks: HousekeepingTask[];
 }
+
+/** One page of a list (GET /Reservations/search) */
+export interface PagedResult<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export type AttentionKind = 'overdueArrival' | 'unpaidDeparture' | 'roomNotReady' | 'pendingApproval';
+
+export interface AttentionItem {
+  kind: AttentionKind;
+  reservationId?: number | null;
+  roomId?: number | null;
+  title: string;
+  detail: string;
+  amount?: number | null;
+}
+
+/** GET /Dashboard/today */
+export interface TodayDashboard {
+  hotelId: number;
+  date: string;
+  totalRooms: number;
+  occupiedRooms: number;
+  occupancyPercent: number;
+  arrivals: number;
+  arrivalsCheckedIn: number;
+  departures: number;
+  departuresCheckedOut: number;
+  inHouse: number;
+  revenueToday: number;
+  pendingApprovals: number;
+  openHousekeepingTasks: number;
+  roomsByStatus: { status: RoomStatus; count: number }[];
+  attention: AttentionItem[];
+}
+
+/** GET /Dashboard/trend: one day */
+export interface DailyTrend {
+  date: string;
+  revenue: number;
+  occupiedRooms: number;
+  totalRooms: number;
+  occupancyPercent: number;
+}
+
+/** A guest as the hotel sees them */
+export interface Guest {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  nationality?: string | null;
+  isVIP: boolean;
+  isBlacklisted: boolean;
+  blacklistReason?: string | null;
+  notes?: string | null;
+  lastStayDate?: string | null;
+}
+
+/** GET /WalkIn/guest-intelligence/{id}: what the desk should know before checking someone in */
+export interface GuestIntelligence {
+  guestId: number;
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+  isVIP: boolean;
+  isBlacklisted: boolean;
+  blacklistReason?: string | null;
+  preferences?: string | null;
+  specialRequests?: string | null;
+  notes?: string | null;
+  totalStays: number;
+  totalSpent: number;
+  lastStayDate?: string | null;
+  mostUsedRoomType?: string | null;
+  hasOutstandingPayments: boolean;
+}
+
+/** Someone who works at a hotel (GET /Hotels/{id}/staff) */
+export interface StaffMember {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  roles: string[];
+  isActive?: boolean;
+}
+
+export const HousekeepingTaskPriorityLabels: Record<HousekeepingTaskPriority, string> = {
+  [HousekeepingTaskPriority.Low]: 'Low',
+  [HousekeepingTaskPriority.Normal]: 'Normal',
+  [HousekeepingTaskPriority.High]: 'High',
+  [HousekeepingTaskPriority.Urgent]: 'Urgent',
+};

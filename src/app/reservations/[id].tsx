@@ -1,6 +1,6 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -22,8 +22,25 @@ import {
 import type { AndroidSymbol, IosSymbol } from '@/components/Icon';
 import { reservationsApi } from '@/features/reservations/api';
 import { useHotelDetail } from '@/features/hotels/hooks';
-import { CancelSheet, StatusTimeline, StatusBadge } from '@/features/reservations/components';
-import { usePayments, useRecordPayment, useReservation, useReservationAction } from '@/features/reservations/hooks';
+import { NewTaskSheet } from '@/features/housekeeping/components';
+import {
+  CancelSheet,
+  CheckoutSheet,
+  DESK_METHODS,
+  EditBookingSheet,
+  RefundSheet,
+  StatusBadge,
+  StatusTimeline,
+} from '@/features/reservations/components';
+import {
+  useExpressCheckOut,
+  usePayments,
+  useRecordPayment,
+  useRefund,
+  useReservation,
+  useReservationAction,
+  useUpdateReservation,
+} from '@/features/reservations/hooks';
 import { useAuth } from '@/lib/auth';
 import { formatMoney, formatServerTime, formatStay, parseStayTime, toDateParam } from '@/lib/format';
 import { errorText } from '@/lib/http';
@@ -38,11 +55,9 @@ import {
 } from '@/lib/types';
 import { makeStyles, radius, space, useTheme } from '@/theme';
 
-// The ways the front desk takes money in person
-const DESK_METHODS = [PaymentMethod.Cash, PaymentMethod.CreditCard, PaymentMethod.DebitCard, PaymentMethod.BankTransfer];
-
 export default function ReservationScreen() {
-  const { id: idParam } = useLocalSearchParams<{ id: string }>();
+  // `pay=1` opens straight on "Record payment" (from the ＋ menu)
+  const { id: idParam, pay } = useLocalSearchParams<{ id: string; pay?: string }>();
   const id = Number(idParam);
   const { canManage } = useAuth();
   const screen = useScreenStyles();
@@ -54,8 +69,17 @@ export default function ReservationScreen() {
   const reservation = useReservation(id);
   const payments = usePayments(id);
   const action = useReservationAction(id);
-  const [paying, setPaying] = useState(false);
+  const checkout = useExpressCheckOut(id);
+  const refund = useRefund(id);
+  const update = useUpdateReservation(id);
+  const [paying, setPaying] = useState(pay === '1');
   const [cancelling, setCancelling] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+  const [editing, setEditing] = useState(false);
+  // After a checkout: offer a cleaning task for the room
+  const [justLeft, setJustLeft] = useState(false);
+  const [addingTask, setAddingTask] = useState(false);
   const pull = usePullToRefresh(() => Promise.all([reservation.refetch(), payments.refetch()]));
 
   if (reservation.isPending) return <SkeletonList count={3} header={false} />;
@@ -70,13 +94,36 @@ export default function ReservationScreen() {
       onError: (e) => Alert.alert('Could not update', errorText(e)),
     });
 
-  const confirmCheckOut = () => {
-    if (r.remainingAmount <= 0) return run(() => reservationsApi.checkOut(r.id), 'Checked out');
-    Alert.alert('Balance still open', `${formatMoney(r.remainingAmount)} hasn't been paid yet. Check out anyway?`, [
-      { text: 'Take payment first', style: 'cancel', onPress: () => setPaying(true) },
-      { text: 'Check out', onPress: () => run(() => reservationsApi.checkOut(r.id), 'Checked out') },
-    ]);
+  // With money owed, the checkout sheet takes it in the same step
+  const startCheckOut = () => {
+    if (r.remainingAmount > 0) return setCheckingOut(true);
+    action.mutate(() => reservationsApi.checkOut(r.id), {
+      onSuccess: () => {
+        toast.show(`Room ${r.roomNumber} checked out`);
+        setJustLeft(true);
+      },
+      onError: (e) => Alert.alert('Could not check out', errorText(e)),
+    });
   };
+
+  const expressCheckOut = (payment: { amount: number; method: PaymentMethod; extraCharges: number; extraNotes?: string }) =>
+    checkout.mutate(payment, {
+      onSuccess: () => {
+        setCheckingOut(false);
+        toast.show(payment.amount > 0 ? `Paid ${formatMoney(payment.amount)} · checked out` : 'Checked out');
+        setJustLeft(true);
+      },
+      onError: (e) => Alert.alert('Could not check out', errorText(e)),
+    });
+
+  const doRefund = (refundRequest: { amount: number; reason?: string }) =>
+    refund.mutate(refundRequest, {
+      onSuccess: () => {
+        setRefunding(false);
+        toast.show(`Refunded ${formatMoney(refundRequest.amount)}`);
+      },
+      onError: (e) => Alert.alert('Could not refund', errorText(e)),
+    });
 
   const confirmNoShow = () =>
     Alert.alert('Mark as no-show?', "The guest didn't arrive. The room is released.", [
@@ -99,9 +146,14 @@ export default function ReservationScreen() {
   // Guests can cancel until their stay starts; after that it's for the hotel to sort out
   const canCancel = !!r.canCancel && (canManage || r.checkInDate.slice(0, 10) >= toDateParam(new Date()));
 
-  // A confirmed guest who hasn't turned up by the check-in date
-  const canNoShow = canManage && r.status === ReservationStatus.Confirmed && parseStayTime(r.checkInDate) <= new Date();
+  // A confirmed guest whose check-in day has passed without them turning up
+  const canNoShow =
+    canManage && r.status === ReservationStatus.Confirmed && toDateParam(parseStayTime(r.checkInDate)) < toDateParam(new Date());
   const canPay = canManage && r.remainingAmount > 0 && r.status !== ReservationStatus.Cancelled;
+  const canRefund = canManage && r.depositAmount > 0;
+  const canEdit =
+    canManage &&
+    [ReservationStatus.Pending, ReservationStatus.Confirmed, ReservationStatus.CheckedIn].includes(r.status);
   const cancelled = r.status === ReservationStatus.Cancelled;
   const paidShare = r.totalAmount > 0 ? Math.min(1, r.depositAmount / r.totalAmount) : 1;
 
@@ -113,11 +165,24 @@ export default function ReservationScreen() {
       : r.canCheckIn
         ? { title: 'Check in', onPress: () => run(() => reservationsApi.checkIn(r.id), 'Checked in') }
         : r.canCheckOut
-          ? { title: 'Check out', onPress: confirmCheckOut }
+          ? { title: r.remainingAmount > 0 ? `Check out · ${formatMoney(r.remainingAmount)} due` : 'Check out', onPress: startCheckOut }
           : null;
 
   return (
     <View style={screen.screen}>
+      <Stack.Screen
+        options={{
+          headerRight: canEdit
+            ? () => (
+                <Pressable onPress={() => setEditing(true)} hitSlop={10} accessibilityRole="button" style={{ marginRight: space.lg }}>
+                  <Text variant="body" weight="600" color="primary">
+                    Edit
+                  </Text>
+                </Pressable>
+              )
+            : undefined,
+        }}
+      />
       <ScrollView
         contentContainerStyle={[screen.content, primary && { paddingBottom: 110 + insets.bottom }]}
         refreshControl={<RefreshControl {...pull} tintColor={colors.primary} colors={[colors.primary]} />}
@@ -127,7 +192,13 @@ export default function ReservationScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, flex: 1 }}>
               {canManage && <Avatar name={r.guestName ?? ''} size={48} />}
               <View style={{ flex: 1 }}>
-                <Text variant="title" numberOfLines={2}>
+                <Text
+                  variant="title"
+                  numberOfLines={2}
+                  onPress={canManage ? () => router.push(`/guests/${r.guestId}`) : undefined}
+                  accessibilityRole={canManage ? 'link' : undefined}
+                  accessibilityHint={canManage ? "Opens the guest's profile" : undefined}
+                >
                   {canManage ? (r.guestName ?? `Booking #${r.id}`) : (r.hotelName ?? `Booking #${r.id}`)}
                 </Text>
                 <Text variant="callout" color="muted">
@@ -146,6 +217,21 @@ export default function ReservationScreen() {
             />
           </View>
         </Card>
+
+        {justLeft && r.status === ReservationStatus.CheckedOut && (
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.tones.warning.bg }}>
+            <Icon ios="sparkles" android="cleaning_services" size={22} color={colors.tones.warning.fg} />
+            <View style={{ flex: 1 }}>
+              <Text variant="headline" color="warning">
+                Room {r.roomNumber} needs cleaning
+              </Text>
+              <Text variant="callout" color="warning">
+                Give it to housekeeping now?
+              </Text>
+            </View>
+            <Button title="Create task" size="sm" onPress={() => setAddingTask(true)} />
+          </Card>
+        )}
 
         <SectionHeader title="Payment" />
         <Card style={{ gap: space.sm }}>
@@ -198,15 +284,27 @@ export default function ReservationScreen() {
             </>
           )}
 
-          {canPay && (
-            <Button
-              size="sm"
-              variant="secondary"
-              title="Record payment"
-              icon={{ ios: 'plus', android: 'add' }}
-              onPress={() => setPaying(true)}
-              style={{ marginTop: space.sm }}
-            />
+          {(canPay || canRefund) && (
+            <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
+              {canPay && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  title="Record payment"
+                  icon={{ ios: 'plus', android: 'add' }}
+                  onPress={() => setPaying(true)}
+                />
+              )}
+              {canRefund && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="Refund"
+                  icon={{ ios: 'arrow.uturn.backward', android: 'undo' }}
+                  onPress={() => setRefunding(true)}
+                />
+              )}
+            </View>
           )}
         </Card>
 
@@ -269,6 +367,49 @@ export default function ReservationScreen() {
             })
           }
         />
+      )}
+
+      {canManage && (
+        <>
+          {r.canCheckOut && (
+            <CheckoutSheet
+              visible={checkingOut}
+              reservation={r}
+              busy={checkout.isPending}
+              onClose={() => setCheckingOut(false)}
+              onCheckOut={expressCheckOut}
+            />
+          )}
+          {canRefund && (
+            <RefundSheet visible={refunding} reservation={r} busy={refund.isPending} onClose={() => setRefunding(false)} onRefund={doRefund} />
+          )}
+          {canEdit && (
+            <EditBookingSheet
+              visible={editing}
+              reservation={r}
+              busy={update.isPending}
+              onClose={() => setEditing(false)}
+              onSave={(changes, onError) =>
+                update.mutate(changes, {
+                  onSuccess: () => {
+                    setEditing(false);
+                    toast.show('Booking updated');
+                  },
+                  onError: (e) => onError(errorText(e)),
+                })
+              }
+            />
+          )}
+          <NewTaskSheet
+            hotelId={r.hotelId}
+            roomId={r.roomId}
+            visible={addingTask}
+            onClose={() => {
+              setAddingTask(false);
+              setJustLeft(false);
+            }}
+          />
+        </>
       )}
 
       {canPay && (

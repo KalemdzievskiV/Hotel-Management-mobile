@@ -26,7 +26,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function AccountScreen() {
   const screen = useScreenStyles();
-  const { user, isStaff, logout } = useAuth();
+  const { user, isStaff, canManage, logout } = useAuth();
 
   const confirmLogout = () => {
     haptics.warning();
@@ -52,6 +52,33 @@ export default function AccountScreen() {
           </Text>
         </View>
       </Card>
+
+      {canManage && (
+        <>
+          <SectionHeader title="Front desk" />
+          <Card padded={false}>
+            <ListRow
+              first
+              icon={{ ios: 'sparkles', android: 'cleaning_services' }}
+              title="Housekeeping"
+              detail="Today's tasks, who's on them"
+              onPress={() => router.push('/tasks')}
+            />
+            <ListRow
+              icon={{ ios: 'person.2', android: 'group' }}
+              title="Guests"
+              detail="Find a guest, their stays and VIP flag"
+              onPress={() => router.push('/guests')}
+            />
+            <ListRow
+              icon={{ ios: 'chart.bar', android: 'bar_chart' }}
+              title="Reports"
+              detail="Money taken and occupancy, last 7–30 days"
+              onPress={() => router.push('/reports')}
+            />
+          </Card>
+        </>
+      )}
 
       {isStaff && <HotelPicker />}
 

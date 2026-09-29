@@ -8,7 +8,7 @@ import { persistMaxAge, queryClient, queryPersister } from '@/lib/query';
 import { useTheme } from '@/theme';
 
 function RootStack() {
-  const { user, ready, isStaff } = useAuth();
+  const { user, ready, isStaff, canManage } = useAuth();
   const { colors } = useTheme();
   if (!ready) return <LoadingScreen />;
 
@@ -30,6 +30,16 @@ function RootStack() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="reservations/[id]" options={{ title: 'Booking', headerBackTitle: 'Back' }} />
         <Stack.Screen name="change-password" options={{ title: 'Change password', headerBackTitle: 'Back' }} />
+      </Stack.Protected>
+      {/* The front desk */}
+      <Stack.Protected guard={canManage}>
+        <Stack.Screen name="walk-in" options={{ title: 'Walk-in', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="reservations/new" options={{ title: 'New reservation', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="record-payment" options={{ title: 'Record payment', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="tasks" options={{ title: 'Housekeeping', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="guests/index" options={{ title: 'Guests', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="guests/[id]" options={{ title: 'Guest', headerBackTitle: 'Guests' }} />
+        <Stack.Screen name="reports" options={{ title: 'Reports', headerBackTitle: 'Back' }} />
       </Stack.Protected>
       {/* Booking a stay and the guest's own details */}
       <Stack.Protected guard={!!user && !isStaff}>

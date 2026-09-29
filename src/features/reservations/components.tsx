@@ -1,8 +1,16 @@
 import { useState } from 'react';
-import { View } from 'react-native';
-import { Avatar, Badge, Button, Card, Chip, Icon, Sheet, Text, TextField } from '@/components';
-import { formatMoney, formatServerTime, formatStay } from '@/lib/format';
-import { Reservation, ReservationStatus, ReservationStatusLabels, ReservationStatusTones } from '@/lib/types';
+import { ScrollView, useWindowDimensions, View } from 'react-native';
+import { Avatar, Badge, Button, Calendar, Card, Chip, FormError, Icon, KeyValue, Sheet, Stepper, Text, TextField } from '@/components';
+import { formatMoney, formatServerTime, formatStay, parseStayTime, toDateParam } from '@/lib/format';
+import {
+  BookingType,
+  PaymentMethod,
+  PaymentMethodLabels,
+  Reservation,
+  ReservationStatus,
+  ReservationStatusLabels,
+  ReservationStatusTones,
+} from '@/lib/types';
 import { radius, space, useTheme, type ToneName } from '@/theme';
 import { OPEN_STATUSES } from './hooks';
 
@@ -202,5 +210,267 @@ export function CancelSheet({
       />
       <Button title="Keep booking" variant="ghost" onPress={onClose} />
     </Sheet>
+  );
+}
+
+// The ways the front desk takes money in person
+export const DESK_METHODS = [PaymentMethod.Cash, PaymentMethod.CreditCard, PaymentMethod.DebitCard, PaymentMethod.BankTransfer];
+
+/** A money amount typed on a phone keyboard, which may use a decimal comma */
+function parseAmount(text: string): number {
+  return Number(text.replace(',', '.'));
+}
+
+/**
+ * Checking out with money still owed: take the balance (and any extras like the minibar) and
+ * check out in one step. The amount can be lowered to check out with part still open.
+ */
+export function CheckoutSheet({
+  visible,
+  reservation: r,
+  busy,
+  onClose,
+  onCheckOut,
+}: {
+  visible: boolean;
+  reservation: Reservation;
+  busy: boolean;
+  onClose: () => void;
+  onCheckOut: (payment: { amount: number; method: PaymentMethod; extraCharges: number; extraNotes?: string }) => void;
+}) {
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Check out" message={`${r.guestName ?? 'Guest'} · Room ${r.roomNumber}`}>
+      {visible && <CheckoutForm reservation={r} busy={busy} onCheckOut={onCheckOut} />}
+    </Sheet>
+  );
+}
+
+function CheckoutForm({
+  reservation: r,
+  busy,
+  onCheckOut,
+}: {
+  reservation: Reservation;
+  busy: boolean;
+  onCheckOut: (payment: { amount: number; method: PaymentMethod; extraCharges: number; extraNotes?: string }) => void;
+}) {
+  const [extras, setExtras] = useState('');
+  const [extraNotes, setExtraNotes] = useState('');
+  const [amount, setAmount] = useState<string | null>(null);
+  const [method, setMethod] = useState(PaymentMethod.Cash);
+
+  const extraValue = extras.trim() === '' ? 0 : parseAmount(extras);
+  const due = r.remainingAmount + (Number.isFinite(extraValue) ? extraValue : 0);
+  // Until the desk types an amount, it follows what's due
+  const amountText = amount ?? due.toFixed(2);
+  const amountValue = amountText.trim() === '' ? 0 : parseAmount(amountText);
+  const valid =
+    Number.isFinite(extraValue) && extraValue >= 0 && Number.isFinite(amountValue) && amountValue >= 0 && amountValue <= due;
+  const left = Math.max(0, due - amountValue);
+
+  return (
+    <View style={{ gap: space.md }}>
+      <KeyValue label="Balance" value={formatMoney(r.remainingAmount)} />
+      <View style={{ flexDirection: 'row', gap: space.md }}>
+        <View style={{ flex: 1 }}>
+          <TextField label="Extras (optional)" keyboardType="decimal-pad" placeholder="0.00" value={extras} onChangeText={setExtras} />
+        </View>
+        <View style={{ flex: 2 }}>
+          <TextField label="For" placeholder="e.g. minibar" value={extraNotes} onChangeText={setExtraNotes} />
+        </View>
+      </View>
+      <TextField
+        label="Taking now"
+        keyboardType="decimal-pad"
+        value={amountText}
+        onChangeText={setAmount}
+        selectTextOnFocus
+        error={valid ? null : `Enter up to ${formatMoney(due)}`}
+        helper={left > 0 ? `${formatMoney(left)} stays open after checkout` : 'Settles the bill'}
+      />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+        {DESK_METHODS.map((m) => (
+          <Chip key={m} label={PaymentMethodLabels[m]} selected={method === m} onPress={() => setMethod(m)} />
+        ))}
+      </View>
+      <Button
+        title={amountValue > 0 ? `Take ${formatMoney(amountValue)} and check out` : 'Check out without paying'}
+        icon={{ ios: 'rectangle.portrait.and.arrow.right', android: 'logout' }}
+        onPress={() => onCheckOut({ amount: amountValue, method, extraCharges: extraValue, extraNotes: extraNotes.trim() || undefined })}
+        loading={busy}
+        disabled={!valid}
+      />
+    </View>
+  );
+}
+
+/** Money back to the guest, up to what they've paid */
+export function RefundSheet({
+  visible,
+  reservation: r,
+  busy,
+  onClose,
+  onRefund,
+}: {
+  visible: boolean;
+  reservation: Reservation;
+  busy: boolean;
+  onClose: () => void;
+  onRefund: (refund: { amount: number; reason?: string }) => void;
+}) {
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Refund" message={`${formatMoney(r.depositAmount)} paid so far`}>
+      {visible && <RefundForm reservation={r} busy={busy} onRefund={onRefund} />}
+    </Sheet>
+  );
+}
+
+function RefundForm({
+  reservation: r,
+  busy,
+  onRefund,
+}: {
+  reservation: Reservation;
+  busy: boolean;
+  onRefund: (refund: { amount: number; reason?: string }) => void;
+}) {
+  // A cancelled booking usually gets everything back
+  const [amount, setAmount] = useState(r.status === ReservationStatus.Cancelled ? r.depositAmount.toFixed(2) : '');
+  const [reason, setReason] = useState('');
+  const value = parseAmount(amount);
+  const valid = Number.isFinite(value) && value > 0 && value <= r.depositAmount;
+  return (
+    <View style={{ gap: space.md }}>
+      <TextField
+        label="Amount"
+        keyboardType="decimal-pad"
+        placeholder="0.00"
+        value={amount}
+        onChangeText={setAmount}
+        selectTextOnFocus
+        error={amount !== '' && !valid ? `Enter up to ${formatMoney(r.depositAmount)}` : null}
+      />
+      <TextField label="Reason (optional)" placeholder="e.g. cancelled in time, overcharged" value={reason} onChangeText={setReason} />
+      <Button
+        title={valid ? `Refund ${formatMoney(value)}` : 'Refund'}
+        variant="danger"
+        onPress={() => onRefund({ amount: value, reason: reason.trim() || undefined })}
+        loading={busy}
+        disabled={!valid}
+      />
+    </View>
+  );
+}
+
+/** "2026-10-10T14:00:00": a stay time as the API takes it, without the zone it sends back */
+function stayParam(value: string): string {
+  const date = parseStayTime(value);
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${toDateParam(date)}T${hh}:${mm}:00`;
+}
+
+export interface BookingEdit {
+  checkInDate: string;
+  checkOutDate: string;
+  durationInHours?: number | null;
+  numberOfGuests: number;
+  specialRequests?: string | null;
+  notes?: string | null;
+  paymentMethod?: PaymentMethod | null;
+}
+
+/**
+ * Change an open booking: its dates (overnight stays; only the check-out once the guest is in),
+ * the number of guests and the notes. The room stays the same.
+ */
+export function EditBookingSheet({
+  visible,
+  reservation,
+  busy,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+  reservation: Reservation;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (changes: BookingEdit, onError: (message: string) => void) => void;
+}) {
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Edit booking" message={`Room ${reservation.roomNumber}`}>
+      {visible && <EditForm reservation={reservation} busy={busy} onSave={onSave} />}
+    </Sheet>
+  );
+}
+
+function EditForm({
+  reservation: r,
+  busy,
+  onSave,
+}: {
+  reservation: Reservation;
+  busy: boolean;
+  onSave: (changes: BookingEdit, onError: (message: string) => void) => void;
+}) {
+  const { height } = useWindowDimensions();
+  const overnight = r.bookingType === BookingType.Daily;
+  const checkedIn = r.status === ReservationStatus.CheckedIn;
+  const [checkIn, setCheckIn] = useState(toDateParam(parseStayTime(r.checkInDate)));
+  const [checkOut, setCheckOut] = useState<string | null>(toDateParam(parseStayTime(r.checkOutDate)));
+  const [guests, setGuests] = useState(r.numberOfGuests);
+  const [requests, setRequests] = useState(r.specialRequests ?? '');
+  const [notes, setNotes] = useState(r.notes ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const today = toDateParam(new Date());
+
+  const save = () => {
+    setError(null);
+    onSave(
+      {
+        // Short stays keep their times; overnight stays are plain days
+        checkInDate: overnight ? checkIn : stayParam(r.checkInDate),
+        checkOutDate: overnight ? checkOut! : stayParam(r.checkOutDate),
+        durationInHours: r.durationInHours ?? null,
+        numberOfGuests: guests,
+        specialRequests: requests.trim() || null,
+        notes: notes.trim() || null,
+      },
+      setError
+    );
+  };
+
+  return (
+    <View style={{ gap: space.md }}>
+      <ScrollView style={{ maxHeight: height * 0.6 }} contentContainerStyle={{ gap: space.lg }} keyboardShouldPersistTaps="handled">
+        {overnight && (
+          <View style={{ gap: space.xs }}>
+            <Calendar
+              mode="range"
+              start={checkIn}
+              end={checkOut}
+              // Once the guest is in, only the check-out can move
+              min={checkedIn ? checkIn : checkIn < today ? checkIn : today}
+              onChange={(start, end) => {
+                if (checkedIn) {
+                  if (start > checkIn) setCheckOut(start);
+                  return;
+                }
+                setCheckIn(start);
+                setCheckOut(end);
+              }}
+            />
+            <Text variant="caption" color="subtle" align="center">
+              {checkedIn ? 'The guest is in: tap a new check-out day' : checkOut ? 'Tap a day to start over' : 'Now tap the check-out day'}
+            </Text>
+          </View>
+        )}
+        <Stepper label="Guests" value={guests} min={1} max={20} onChange={setGuests} />
+        <TextField label="Guest's requests" value={requests} onChangeText={setRequests} />
+        <TextField label="Staff notes" value={notes} onChangeText={setNotes} />
+      </ScrollView>
+      <FormError message={error} />
+      <Button title="Save changes" onPress={save} loading={busy} disabled={overnight && !checkOut} />
+    </View>
   );
 }

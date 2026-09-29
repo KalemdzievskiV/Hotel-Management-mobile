@@ -80,3 +80,17 @@ export function formatStay(r: Reservation): string {
   const end = checkOut.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   return `${start} → ${end}${nights}`;
 }
+
+/**
+ * The hotel's "today" for the API. Staff phones are at the hotel, so the phone's own calendar
+ * day and UTC offset stand in for the hotel's (hotels don't store a time zone yet).
+ */
+export function hotelDay(): { date: string; utcOffsetMinutes: number } {
+  const now = new Date();
+  return { date: toDateParam(now), utcOffsetMinutes: -now.getTimezoneOffset() };
+}
+
+/** 1234.5 → "1,235" for KPI tiles, where cents are noise */
+export function formatWholeMoney(amount: number): string {
+  return Math.round(amount).toLocaleString();
+}

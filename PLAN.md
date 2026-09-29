@@ -156,9 +156,9 @@ Split `lib/api.ts` by feature. Keep `types.ts` in step with the backend enums (a
 |---|---|---|---|
 | B1 | **Refresh tokens**: `POST /Auth/refresh`, `POST /Auth/logout` (revoke); short access token + 30-day rotating refresh token stored hashed | Stop the hourly sign-out | M |
 | B2 | ✅ `PUT /Guests/me` (guest edits own profile), `POST /Auth/change-password` | Guest profile screen | S |
-| B3 | Hotel-scoped queries: `?hotelId=` on `today/check-ins`, `today/check-outs`, stats; paging on `GET /Reservations` | The app currently downloads everything and filters on the phone | S |
-| B4 | **"Today" uses the hotel's local date**, not `DateTime.UtcNow.Date` (`ReservationsController.cs:418`) | Arrivals are wrong in the evening for hotels east/west of UTC | S–M |
-| B5 | `GET /Dashboard/today?hotelId=` returning all KPI numbers in one call | One request for the Today screen instead of ~6 | S |
+| B3 | ✅ Hotel-scoped queries: `?hotelId=` on `today/check-ins`, `today/check-outs`, stats; paging on `GET /Reservations` | The app currently downloads everything and filters on the phone | S |
+| B4 | ✅ **"Today" uses the hotel's local date**, not `DateTime.UtcNow.Date` (`ReservationsController.cs:418`) | Arrivals are wrong in the evening for hotels east/west of UTC | S–M |
+| B5 | ✅ `GET /Dashboard/today?hotelId=` returning all KPI numbers in one call | One request for the Today screen instead of ~6 | S |
 | B6 | Push: `DeviceToken` entity + `POST/DELETE /Notifications/devices`; a `PushService` calling Expo's push API on events (new guest booking → hotel managers; booking confirmed/cancelled → guest; task assigned/urgent → housekeeper) | Notifications | M |
 | B7 | Hotel photos + amenities + "price from" on the public hotel DTO (if not already there) | A good Explore screen | S–M |
 | B8 | ✅ Guest cancellation rules (e.g. only before check-in, only Pending/Confirmed) enforced server-side | Guests can cancel now; make sure it's safe | S |
@@ -192,17 +192,21 @@ Notes from building it:
 - Explore asks `available-rooms` once per hotel. Fine for a handful of hotels; B7 ("price from" on the hotel DTO) or a search endpoint is needed before there are dozens.
 - The API returns booking dates with a `Z` although they're hotel wall-clock times; the app reads them with `parseStayTime`, which ignores the zone.
 
-### Phase 2: Manager daily operations (≈2.5 weeks)
-- [ ] B3, B4, B5
-- [ ] Today dashboard
-- [ ] Bookings redesign with segments + filter sheet
-- [ ] ＋ sheet: walk-in, new reservation, record payment, new task
-- [ ] Express checkout with balance sheet → "create cleaning task"
-- [ ] Refunds; edit reservation (dates / room / notes)
-- [ ] Guests: search, detail (stays, balance, VIP/blacklist badge)
-- [ ] Housekeeping: create / assign / reassign (managers), swipe actions (housekeepers)
-- [ ] Reports-lite in More: 7-day revenue + occupancy (Recharts isn't RN — use `victory-native` or a simple bar component)
+### Phase 2: Manager daily operations (≈2.5 weeks) — done 2026-09-29
+- [x] B3, B4, B5 (`GET /Reservations/search`, `?hotelId=&date=` on today/check-ins/check-outs and walk-in rooms, `GET /Dashboard/today` and `/Dashboard/trend`)
+- [x] Today dashboard
+- [x] Bookings redesign with segments (arriving, leaving, in-house, upcoming, to approve, all), search and paging. No filter sheet: segments plus search covered it
+- [x] ＋ sheet: walk-in, new reservation, record payment, new task
+- [x] Express checkout with balance sheet (and extras) → "create cleaning task"
+- [x] Refunds; edit reservation (dates / guests / notes; the API can't move a booking to another room)
+- [x] Guests: search, detail (stays, spend, VIP switch, blacklist badge)
+- [x] Housekeeping: create / assign / reassign (managers), swipe actions (everyone, buttons stay too)
+- [x] Reports-lite in More: 7/14/30-day money taken + occupancy (a small in-house bar chart, no chart library)
 **Done when**: a manager can run a whole shift from the phone.
+
+Notes from building it:
+- Hotels have no time zone, so "today" is the day the phone sends (`date`, plus `utcOffsetMinutes` for payment times). Staff phones are at the hotel, so this is right in practice; a per-hotel time zone (entity + website setting) would make it exact.
+- Swipe rows are built on `PanResponder` (no gesture-handler/reanimated dependency), so Expo Go keeps working.
 
 ### Phase 3: Notifications & polish (≈1.5 weeks)
 - [ ] B6 push + in-app notification list, per-type toggles in settings
