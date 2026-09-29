@@ -133,11 +133,12 @@ function NewGuestForm({
   const [tried, setTried] = useState(false);
   const set = (field: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [field]: value }));
 
+  // Only the first name is required; the rest is checked only when filled in
   const errors = {
     firstName: nameError(form.firstName, 'First name'),
-    lastName: nameError(form.lastName, 'Last name'),
-    email: EMAIL_PATTERN.test(form.email.trim()) ? null : 'Enter an email address',
-    phoneNumber: /^[\d\s\-+().]{5,}$/.test(form.phoneNumber.trim()) ? null : 'Enter a phone number',
+    lastName: form.lastName.trim() ? nameError(form.lastName, 'Last name') : null,
+    email: !form.email.trim() || EMAIL_PATTERN.test(form.email.trim()) ? null : 'Enter a valid email address',
+    phoneNumber: !form.phoneNumber.trim() || /^[\d\s\-+().]{5,}$/.test(form.phoneNumber.trim()) ? null : 'Enter a valid phone number',
   };
   const valid = Object.values(errors).every((e) => e === null);
   const shown = (field: keyof typeof errors) => (tried ? errors[field] : null);
@@ -149,11 +150,11 @@ function NewGuestForm({
           <TextField label="First name" value={form.firstName} onChangeText={set('firstName')} error={shown('firstName')} autoFocus />
         </View>
         <View style={{ flex: 1 }}>
-          <TextField label="Last name" value={form.lastName} onChangeText={set('lastName')} error={shown('lastName')} />
+          <TextField label="Last name (optional)" value={form.lastName} onChangeText={set('lastName')} error={shown('lastName')} />
         </View>
       </View>
       <TextField
-        label="Phone"
+        label="Phone (optional)"
         icon={{ ios: 'phone', android: 'call' }}
         keyboardType="phone-pad"
         value={form.phoneNumber}
@@ -161,7 +162,7 @@ function NewGuestForm({
         error={shown('phoneNumber')}
       />
       <TextField
-        label="Email"
+        label="Email (optional)"
         icon={{ ios: 'envelope', android: 'mail' }}
         keyboardType="email-address"
         autoCapitalize="none"
