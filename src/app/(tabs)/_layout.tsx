@@ -14,7 +14,7 @@ function tabIcon(ios: IosSymbol, android: AndroidSymbol) {
 // Each role gets its own tabs:
 //   management   Reservations · Housekeeping · Rooms · Account
 //   housekeeper  Housekeeping · Rooms · Account
-//   guest        My bookings · Hotels · Account
+//   guest        Explore · Trips · Account
 export default function TabsLayout() {
   const { canManage, isHousekeeper, isStaff } = useAuth();
   const { colors } = useTheme();
@@ -37,11 +37,12 @@ export default function TabsLayout() {
       <Tabs.Protected guard={!isHousekeeper}>
         <Tabs.Screen
           name="index"
-          options={{
-            title: canManage ? 'Reservations' : 'My bookings',
-            tabBarLabel: canManage ? 'Bookings' : 'Trips',
-            tabBarIcon: tabIcon('calendar', 'calendar_month'),
-          }}
+          options={
+            canManage
+              ? { title: 'Reservations', tabBarLabel: 'Bookings', tabBarIcon: tabIcon('calendar', 'calendar_month') }
+              : // Explore has its own big greeting instead of a header
+                { title: 'Explore', headerShown: false, tabBarIcon: tabIcon('magnifyingglass', 'travel_explore') }
+          }
         />
       </Tabs.Protected>
       <Tabs.Protected guard={isStaff}>
@@ -52,7 +53,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="rooms" options={{ title: 'Rooms', tabBarIcon: tabIcon('bed.double', 'bed') }} />
       </Tabs.Protected>
       <Tabs.Protected guard={!isStaff}>
-        <Tabs.Screen name="hotels" options={{ title: 'Hotels', tabBarIcon: tabIcon('building.2', 'apartment') }} />
+        <Tabs.Screen name="trips" options={{ title: 'Trips', tabBarIcon: tabIcon('suitcase', 'luggage') }} />
       </Tabs.Protected>
       <Tabs.Screen
         name="account"

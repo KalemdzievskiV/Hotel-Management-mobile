@@ -1,7 +1,8 @@
+import { router } from 'expo-router';
 import { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Icon, Text, TextField, useScreenStyles } from '@/components';
+import { Button, FormError, Icon, Text, TextField, useScreenStyles } from '@/components';
 import { useAuth } from '@/lib/auth';
 import { API_URL, errorText } from '@/lib/http';
 import { radius, space, useTheme } from '@/theme';
@@ -50,9 +51,9 @@ export default function LoginScreen() {
             >
               <Icon ios="building.2.fill" android="apartment" size={28} color={colors.onPrimary} />
             </View>
-            <Text variant="display">Welcome back</Text>
+            <Text variant="display">Welcome</Text>
             <Text variant="body" color="muted">
-              Sign in with your hotel account to manage bookings, rooms and housekeeping.
+              {"Sign in to book your next stay, or to run your hotel's bookings, rooms and housekeeping."}
             </Text>
           </View>
 
@@ -84,26 +85,36 @@ export default function LoginScreen() {
             onSubmitEditing={submit}
           />
 
-          {error && (
-            <View
-              accessibilityRole="alert"
-              style={{
-                flexDirection: 'row',
-                gap: space.sm,
-                alignItems: 'center',
-                backgroundColor: colors.tones.danger.bg,
-                borderRadius: radius.md,
-                padding: space.md,
-              }}
-            >
-              <Icon ios="exclamationmark.circle" android="error" size={18} color={colors.tones.danger.fg} />
-              <Text variant="callout" color="danger" style={{ flex: 1 }}>
-                {error}
-              </Text>
-            </View>
-          )}
+          <FormError message={error} />
 
           <Button title="Sign in" onPress={submit} loading={busy} disabled={!canSubmit} style={{ marginTop: space.sm }} />
+          <Button
+            title="Forgot password?"
+            variant="ghost"
+            size="sm"
+            style={{ alignSelf: 'center' }}
+            onPress={() =>
+              // There's no self-service reset in the API yet
+              Alert.alert(
+                'Forgot your password?',
+                "Resetting it from the app isn't available yet. Ask the hotel you booked with, or the hotel's manager if you work there, to help you get back in."
+              )
+            }
+          />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.md }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+            <Text variant="caption" color="subtle">
+              New here?
+            </Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+          </View>
+          <Button
+            title="Create a guest account"
+            variant="secondary"
+            icon={{ ios: 'person.badge.plus', android: 'person_add' }}
+            onPress={() => router.push('/register')}
+          />
 
           <Text variant="caption" color="subtle" align="center" style={{ marginTop: space.xl }}>
             Server: {API_URL.replace(/^https?:\/\//, '')}

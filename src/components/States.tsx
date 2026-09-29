@@ -82,3 +82,27 @@ const useStyles = makeStyles((t) => ({
   },
   action: { alignSelf: 'center', marginTop: space.sm },
 }));
+
+/** Why a form couldn't be sent, shown above its button */
+export function FormError({ message }: { message: string | null }) {
+  const { colors } = useTheme();
+  if (!message) return null;
+  return (
+    <View
+      accessibilityRole="alert"
+      style={{
+        flexDirection: 'row',
+        gap: space.sm,
+        alignItems: 'center',
+        backgroundColor: colors.tones.danger.bg,
+        borderRadius: radius.md,
+        padding: space.md,
+      }}
+    >
+      <Icon ios="exclamationmark.circle" android="error" size={18} color={colors.tones.danger.fg} />
+      <Text variant="callout" color="danger" style={{ flex: 1 }}>
+        {message}
+      </Text>
+    </View>
+  );
+}

@@ -155,13 +155,13 @@ Split `lib/api.ts` by feature. Keep `types.ts` in step with the backend enums (a
 | # | Change | Why | Size |
 |---|---|---|---|
 | B1 | **Refresh tokens**: `POST /Auth/refresh`, `POST /Auth/logout` (revoke); short access token + 30-day rotating refresh token stored hashed | Stop the hourly sign-out | M |
-| B2 | `PUT /Guests/me` (guest edits own profile), `POST /Auth/change-password` | Guest profile screen | S |
+| B2 | ✅ `PUT /Guests/me` (guest edits own profile), `POST /Auth/change-password` | Guest profile screen | S |
 | B3 | Hotel-scoped queries: `?hotelId=` on `today/check-ins`, `today/check-outs`, stats; paging on `GET /Reservations` | The app currently downloads everything and filters on the phone | S |
 | B4 | **"Today" uses the hotel's local date**, not `DateTime.UtcNow.Date` (`ReservationsController.cs:418`) | Arrivals are wrong in the evening for hotels east/west of UTC | S–M |
 | B5 | `GET /Dashboard/today?hotelId=` returning all KPI numbers in one call | One request for the Today screen instead of ~6 | S |
 | B6 | Push: `DeviceToken` entity + `POST/DELETE /Notifications/devices`; a `PushService` calling Expo's push API on events (new guest booking → hotel managers; booking confirmed/cancelled → guest; task assigned/urgent → housekeeper) | Notifications | M |
 | B7 | Hotel photos + amenities + "price from" on the public hotel DTO (if not already there) | A good Explore screen | S–M |
-| B8 | Guest cancellation rules (e.g. only before check-in, only Pending/Confirmed) enforced server-side | Guests can cancel now; make sure it's safe | S |
+| B8 | ✅ Guest cancellation rules (e.g. only before check-in, only Pending/Confirmed) enforced server-side | Guests can cancel now; make sure it's safe | S |
 
 Follow the usual order from the root `CLAUDE.md` (Entity → migration → DTO → mapping → validator → service → DI → controller) and add tests in `HotelManagement/Tests/`.
 
@@ -178,13 +178,19 @@ Each phase ends with an APK that people can actually use.
 - [x] Restyle the existing screens with the new components (no new features yet)
 **Done when**: you stay signed in for days, every existing screen uses the design system, and dark mode works.
 
-### Phase 1: Guest app (≈2 weeks)
-- [ ] Register, forgot-password link to the web (or B2 later)
-- [ ] Explore (search, date/guest picker), hotel detail
-- [ ] Available rooms → review → book (daily + short stay)
-- [ ] Trips: next-trip card, detail with status timeline, cancel
-- [ ] Profile (B2)
+### Phase 1: Guest app (≈2 weeks) — done 2026-09-29
+- [x] Register (guest accounts). Forgot password shows a note: there's no reset flow in the API or on the web yet (the web's link goes to a page that doesn't exist)
+- [x] Explore (search, date/guest picker), hotel detail
+- [x] Available rooms → review → book (daily + short stay)
+- [x] Trips: next-trip card, detail with status timeline, cancel (with a reason)
+- [x] Profile (B2: `PUT /Guests/me`, `POST /Auth/change-password`)
+- [x] B8: guests can't cancel once the check-in day has passed, or book a check-in in the past
 **Done when**: a new user can install the app, register, and book a room without the web.
+
+Notes from building it:
+- The date picker is a small in-house `Calendar` component, not `react-native-calendars`; no new dependencies were needed.
+- Explore asks `available-rooms` once per hotel. Fine for a handful of hotels; B7 ("price from" on the hotel DTO) or a search endpoint is needed before there are dozens.
+- The API returns booking dates with a `Z` although they're hotel wall-clock times; the app reads them with `parseStayTime`, which ignores the zone.
 
 ### Phase 2: Manager daily operations (≈2.5 weeks)
 - [ ] B3, B4, B5

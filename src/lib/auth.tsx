@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { authApi } from '@/features/auth/api';
+import { authApi, type Registration } from '@/features/auth/api';
 import { setSessionHandlers, setTokens } from './http';
 import { isTokenExpired, userIdFromToken } from './jwt';
 import { clearQueryCache } from './query';
@@ -28,6 +28,12 @@ interface AuthContextValue {
   /** Works at a hotel (management or housekeeper): picks a hotel and sees its rooms and tasks */
   isStaff: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /** Creates a guest account and signs it in */
+  register: (registration: Registration) => Promise<void>;
+  /** Other devices are signed out; this one continues with the new tokens */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  /** After the guest renamed themselves in their profile */
+  setFullName: (fullName: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -97,11 +103,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setSessionHandlers(null);
   }, [save, endSession]);
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const auth = await authApi.login(email, password);
+  const start = useCallback(
+    async (auth: AuthResponse) => {
       await clearQueryCache();
       await save(toSession(auth));
+    },
+    [save]
+  );
+
+  const login = useCallback(
+    async (email: string, password: string) => start(await authApi.login(email, password)),
+    [start]
+  );
+
+  const register = useCallback(
+    async (registration: Registration) => start(await authApi.register(registration)),
+    [start]
+  );
+
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      const auth = await authApi.changePassword(currentPassword, newPassword);
+      await save(toSession(auth));
+    },
+    [save]
+  );
+
+  const setFullName = useCallback(
+    async (fullName: string) => {
+      const session = sessionRef.current;
+      if (session) await save({ ...session, user: { ...session.user, fullName } });
     },
     [save]
   );
@@ -109,8 +140,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(() => {
     const canManage = !!user?.roles.some((role) => MANAGEMENT_ROLES.includes(role));
     const isHousekeeper = !canManage && !!user?.roles.includes('Housekeeper');
-    return { user, ready, canManage, isHousekeeper, isStaff: canManage || isHousekeeper, login, logout };
-  }, [user, ready, login, logout]);
+    return {
+      user,
+      ready,
+      canManage,
+      isHousekeeper,
+      isStaff: canManage || isHousekeeper,
+      login,
+      register,
+      changePassword,
+      setFullName,
+      logout,
+    };
+  }, [user, ready, login, register, changePassword, setFullName, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

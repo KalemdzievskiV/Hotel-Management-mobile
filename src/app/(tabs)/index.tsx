@@ -13,8 +13,9 @@ import {
   useScreenStyles,
   WithHotel,
 } from '@/components';
+import { ExploreScreen } from '@/features/booking/ExploreScreen';
 import { ReservationCard } from '@/features/reservations/components';
-import { useDeskReservations, useMyReservations, type ReservationSection } from '@/features/reservations/hooks';
+import { useDeskReservations, type ReservationSection } from '@/features/reservations/hooks';
 import { useAuth } from '@/lib/auth';
 import { errorText } from '@/lib/http';
 import { usePullToRefresh, useRefreshOnFocus } from '@/lib/query';
@@ -25,30 +26,19 @@ function matches(r: Reservation, query: string): boolean {
   return [r.guestName, r.roomNumber, r.hotelName, String(r.id)].some((value) => value?.toLowerCase().includes(query));
 }
 
-export default function ReservationsScreen() {
+// The first tab: the front desk's bookings for management, Explore for guests
+// (housekeepers don't get this tab)
+export default function HomeScreen() {
   const { canManage } = useAuth();
-  return canManage ? <WithHotel>{(hotel) => <DeskReservations hotel={hotel} />}</WithHotel> : <GuestReservations />;
+  return canManage ? <WithHotel>{(hotel) => <DeskReservations hotel={hotel} />}</WithHotel> : <ExploreScreen />;
 }
 
 function DeskReservations({ hotel }: { hotel: Hotel }) {
   const query = useDeskReservations(hotel.id);
-  return <ReservationList query={query} perspective="desk" header={<HotelLine />} />;
+  return <ReservationList query={query} header={<HotelLine />} />;
 }
 
-function GuestReservations() {
-  const query = useMyReservations();
-  return <ReservationList query={query} perspective="guest" />;
-}
-
-function ReservationList({
-  query,
-  perspective,
-  header,
-}: {
-  query: UseQueryResult<ReservationSection[]>;
-  perspective: 'desk' | 'guest';
-  header?: ReactNode;
-}) {
+function ReservationList({ query, header }: { query: UseQueryResult<ReservationSection[]>; header?: ReactNode }) {
   const screen = useScreenStyles();
   const { colors } = useTheme();
   const { data, error, isPending, refetch } = query;
@@ -71,15 +61,6 @@ function ReservationList({
   if (error && !data) return <ErrorState message={errorText(error)} onRetry={() => void refetch()} />;
 
   const total = (data ?? []).reduce((sum, s) => sum + s.data.length, 0);
-  if (perspective === 'guest' && total === 0) {
-    return (
-      <EmptyState
-        icon={{ ios: 'suitcase', android: 'luggage' }}
-        title="No trips yet"
-        message="Bookings you make will show up here."
-      />
-    );
-  }
 
   return (
     <SectionList
@@ -97,7 +78,7 @@ function ReservationList({
           {total > 0 && (
             <TextField
               icon={{ ios: 'magnifyingglass', android: 'search' }}
-              placeholder={perspective === 'desk' ? 'Search guest, room or booking #' : 'Search hotel or booking #'}
+              placeholder="Search guest, room or booking #"
               accessibilityLabel="Search bookings"
               value={search}
               onChangeText={setSearch}
@@ -129,7 +110,7 @@ function ReservationList({
       renderItem={({ item }) => (
         <ReservationCard
           reservation={item}
-          perspective={perspective}
+          perspective="desk"
           onPress={() => router.push(`/reservations/${item.id}`)}
         />
       )}

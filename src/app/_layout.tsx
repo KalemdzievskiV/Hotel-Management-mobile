@@ -8,7 +8,7 @@ import { persistMaxAge, queryClient, queryPersister } from '@/lib/query';
 import { useTheme } from '@/theme';
 
 function RootStack() {
-  const { user, ready } = useAuth();
+  const { user, ready, isStaff } = useAuth();
   const { colors } = useTheme();
   if (!ready) return <LoadingScreen />;
 
@@ -24,10 +24,18 @@ function RootStack() {
     >
       <Stack.Protected guard={!user}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="register" options={{ title: '', headerBackTitle: 'Sign in' }} />
       </Stack.Protected>
       <Stack.Protected guard={!!user}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="reservations/[id]" options={{ title: 'Booking', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="change-password" options={{ title: 'Change password', headerBackTitle: 'Back' }} />
+      </Stack.Protected>
+      {/* Booking a stay and the guest's own details */}
+      <Stack.Protected guard={!!user && !isStaff}>
+        <Stack.Screen name="hotels/[id]" options={{ title: '', headerBackTitle: 'Explore' }} />
+        <Stack.Screen name="book" options={{ title: 'Review your stay', headerBackTitle: 'Rooms' }} />
+        <Stack.Screen name="profile" options={{ title: 'Your details', headerBackTitle: 'Back' }} />
       </Stack.Protected>
     </Stack>
   );

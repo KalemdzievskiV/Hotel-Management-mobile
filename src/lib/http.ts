@@ -86,10 +86,12 @@ async function send<T>(method: string, path: string, body: unknown, token: strin
   return data as T;
 }
 
+// Calls made without a session, where a 401 just means a wrong password
+const SIGN_IN_PATHS = ['/Auth/login', '/Auth/register', '/Auth/refresh', '/Auth/logout'];
+
 /** An authenticated API call; renews the session when the access token has expired */
 export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  // Sign-in calls don't use a session, and a 401 there is just a wrong password
-  if (path.startsWith('/Auth/')) return send<T>(method, path, body, null);
+  if (SIGN_IN_PATHS.includes(path)) return send<T>(method, path, body, null);
 
   // Renew ahead of time rather than waiting for a 401
   if (tokens?.refreshToken && isTokenExpired(tokens.token, 30)) {
@@ -126,8 +128,16 @@ function safeJson(text: string): unknown {
 function errorMessage(data: unknown, status: number): string {
   if (typeof data === 'string' && data) return data;
   if (data && typeof data === 'object') {
-    const { message, title } = data as { message?: unknown; title?: unknown };
+    const { message, title, errors } = data as { message?: unknown; title?: unknown; errors?: unknown };
     if (typeof message === 'string' && message) return message;
+    // Validation: a list (sign-up) or messages per field (everything else); show them all
+    const listed = Array.isArray(errors)
+      ? errors
+      : errors && typeof errors === 'object'
+        ? Object.values(errors).flat()
+        : [];
+    const texts = listed.filter((e): e is string => typeof e === 'string' && e !== '');
+    if (texts.length > 0) return [...new Set(texts)].join('\n');
     if (typeof title === 'string' && title) return title;
   }
   if (status === 401) return 'Invalid email or password';

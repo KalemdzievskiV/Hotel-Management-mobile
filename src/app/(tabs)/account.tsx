@@ -1,6 +1,7 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { router } from 'expo-router';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
-import { Avatar, Button, Card, Icon, KeyValue, SectionHeader, Skeleton, Text, useScreenStyles } from '@/components';
+import { Avatar, Button, Card, Icon, KeyValue, ListRow, SectionHeader, Skeleton, Text, useScreenStyles } from '@/components';
 import { useAuth } from '@/lib/auth';
 import { haptics } from '@/lib/haptics';
 import { useHotel } from '@/lib/hotel';
@@ -53,6 +54,25 @@ export default function AccountScreen() {
       </Card>
 
       {isStaff && <HotelPicker />}
+
+      <SectionHeader title="Account" />
+      <Card padded={false}>
+        {!isStaff && (
+          <ListRow
+            first
+            icon={{ ios: 'person.text.rectangle', android: 'badge' }}
+            title="Your details"
+            detail="Name, phone and address"
+            onPress={() => router.push('/profile')}
+          />
+        )}
+        <ListRow
+          first={isStaff}
+          icon={{ ios: 'key', android: 'key' }}
+          title="Change password"
+          onPress={() => router.push('/change-password')}
+        />
+      </Card>
 
       <SectionHeader title="App" />
       <Card>

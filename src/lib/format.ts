@@ -1,20 +1,18 @@
 import { BookingType, Reservation } from './types';
 
-export function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-export function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export function formatMoney(amount: number): string {
   return amount.toFixed(2);
+}
+
+/**
+ * Booking dates and times are hotel wall-clock times ("11:00 at the hotel"). The API sends them
+ * with a "Z" it doesn't mean, so the zone is dropped: 11:00 stays 11:00 on any phone.
+ */
+export function parseStayTime(value: string): Date {
+  const [date, time = '00:00:00'] = value.replace(/([zZ]|[+-]\d\d:?\d\d)$/, '').split('T');
+  const [year, month, day] = date!.split('-').map(Number);
+  const [hour, minute, second] = time.split(':').map((part) => Math.floor(Number(part)));
+  return new Date(year!, month! - 1, day!, hour || 0, minute || 0, second || 0);
 }
 
 /**
@@ -65,14 +63,20 @@ function startOfDay(date: Date): Date {
 
 /** "12 Oct → 15 Oct 2026 · 3 nights" or "12 Oct, 14:00 · 3 h" for short stays */
 export function formatStay(r: Reservation): string {
+  const checkIn = parseStayTime(r.checkInDate);
+  const checkOut = parseStayTime(r.checkOutDate);
   if (r.bookingType === BookingType.ShortStay) {
-    return `${formatDateTime(r.checkInDate)} · ${r.durationInHours ?? '?'} h`;
+    const at = checkIn.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return `${at} · ${r.durationInHours ?? '?'} h`;
   }
   const nights = r.totalNights ? ` · ${r.totalNights} night${r.totalNights === 1 ? '' : 's'}` : '';
   // The year once, on the last date, when both dates fall in the same year
-  const sameYear = new Date(r.checkInDate).getFullYear() === new Date(r.checkOutDate).getFullYear();
-  const start = sameYear
-    ? new Date(r.checkInDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-    : formatDate(r.checkInDate);
-  return `${start} → ${formatDate(r.checkOutDate)}${nights}`;
+  const sameYear = checkIn.getFullYear() === checkOut.getFullYear();
+  const start = checkIn.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  });
+  const end = checkOut.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return `${start} → ${end}${nights}`;
 }

@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -21,10 +21,11 @@ import {
 } from '@/components';
 import type { AndroidSymbol, IosSymbol } from '@/components/Icon';
 import { reservationsApi } from '@/features/reservations/api';
-import { StatusBadge } from '@/features/reservations/components';
+import { useHotelDetail } from '@/features/hotels/hooks';
+import { CancelSheet, StatusTimeline, StatusBadge } from '@/features/reservations/components';
 import { usePayments, useRecordPayment, useReservation, useReservationAction } from '@/features/reservations/hooks';
 import { useAuth } from '@/lib/auth';
-import { formatMoney, formatServerTime, formatStay } from '@/lib/format';
+import { formatMoney, formatServerTime, formatStay, parseStayTime, toDateParam } from '@/lib/format';
 import { errorText } from '@/lib/http';
 import { usePullToRefresh } from '@/lib/query';
 import {
@@ -54,6 +55,7 @@ export default function ReservationScreen() {
   const payments = usePayments(id);
   const action = useReservationAction(id);
   const [paying, setPaying] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const pull = usePullToRefresh(() => Promise.all([reservation.refetch(), payments.refetch()]));
 
   if (reservation.isPending) return <SkeletonList count={3} header={false} />;
@@ -82,23 +84,25 @@ export default function ReservationScreen() {
       { text: 'Mark no-show', style: 'destructive', onPress: () => run(() => reservationsApi.noShow(r.id), 'Marked as no-show') },
     ]);
 
-  const confirmCancel = () =>
-    Alert.alert(
-      'Cancel this booking?',
-      canManage ? 'The guest will lose this booking and the room is released.' : 'Your booking will be cancelled.',
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Cancel booking',
-          style: 'destructive',
-          onPress: () => run(() => reservationsApi.cancel(r.id, 'Cancelled from mobile app'), 'Booking cancelled'),
-        },
-      ]
-    );
+  const confirmCancel = () => {
+    if (!canManage) return setCancelling(true);
+    Alert.alert('Cancel this booking?', 'The guest will lose this booking and the room is released.', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Cancel booking',
+        style: 'destructive',
+        onPress: () => run(() => reservationsApi.cancel(r.id, 'Cancelled by the hotel from the mobile app'), 'Booking cancelled'),
+      },
+    ]);
+  };
+
+  // Guests can cancel until their stay starts; after that it's for the hotel to sort out
+  const canCancel = !!r.canCancel && (canManage || r.checkInDate.slice(0, 10) >= toDateParam(new Date()));
 
   // A confirmed guest who hasn't turned up by the check-in date
-  const canNoShow = canManage && r.status === ReservationStatus.Confirmed && new Date(r.checkInDate) <= new Date();
+  const canNoShow = canManage && r.status === ReservationStatus.Confirmed && parseStayTime(r.checkInDate) <= new Date();
   const canPay = canManage && r.remainingAmount > 0 && r.status !== ReservationStatus.Cancelled;
+  const cancelled = r.status === ReservationStatus.Cancelled;
   const paidShare = r.totalAmount > 0 ? Math.min(1, r.depositAmount / r.totalAmount) : 1;
 
   // The one next step at the front desk, kept within thumb reach at the bottom
@@ -145,17 +149,31 @@ export default function ReservationScreen() {
 
         <SectionHeader title="Payment" />
         <Card style={{ gap: space.sm }}>
-          <View style={screen.row}>
-            <Text variant="body" color="muted">
-              {r.remainingAmount > 0 ? 'Balance due' : 'Balance'}
-            </Text>
-            <Text variant="title" color={r.remainingAmount > 0 ? 'warning' : 'success'}>
-              {r.remainingAmount > 0 ? formatMoney(r.remainingAmount) : 'Paid in full'}
-            </Text>
-          </View>
-          <View style={styles.progressTrack} accessibilityLabel={`${Math.round(paidShare * 100)}% paid`}>
-            <View style={[styles.progressFill, { width: `${paidShare * 100}%` }]} />
-          </View>
+          {cancelled ? (
+            // The API still counts the total as owed; nobody owes anything for a cancelled stay
+            <View style={screen.row}>
+              <Text variant="body" color="muted">
+                {r.depositAmount > 0 ? 'Paid, to be refunded' : 'Balance'}
+              </Text>
+              <Text variant="title" color={r.depositAmount > 0 ? 'info' : 'muted'}>
+                {r.depositAmount > 0 ? formatMoney(r.depositAmount) : 'Nothing to pay'}
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={screen.row}>
+                <Text variant="body" color="muted">
+                  {r.remainingAmount > 0 ? 'Balance due' : 'Balance'}
+                </Text>
+                <Text variant="title" color={r.remainingAmount > 0 ? 'warning' : 'success'}>
+                  {r.remainingAmount > 0 ? formatMoney(r.remainingAmount) : 'Paid in full'}
+                </Text>
+              </View>
+              <View style={styles.progressTrack} accessibilityLabel={`${Math.round(paidShare * 100)}% paid`}>
+                <View style={[styles.progressFill, { width: `${paidShare * 100}%` }]} />
+              </View>
+            </>
+          )}
           <View style={screen.row}>
             <Text variant="caption" color="subtle">
               Paid {formatMoney(r.depositAmount)}
@@ -164,6 +182,12 @@ export default function ReservationScreen() {
               Total {formatMoney(r.totalAmount)}
             </Text>
           </View>
+
+          {!canManage && r.remainingAmount > 0 && !cancelled && (
+            <Text variant="caption" color="muted">
+              You pay the hotel when you arrive.
+            </Text>
+          )}
 
           {(payments.data?.length ?? 0) > 0 && (
             <>
@@ -186,6 +210,16 @@ export default function ReservationScreen() {
           )}
         </Card>
 
+        {!canManage && (
+          <>
+            <SectionHeader title="Status" />
+            <Card>
+              <StatusTimeline reservation={r} />
+            </Card>
+            <HotelCard hotelId={r.hotelId} />
+          </>
+        )}
+
         {(r.specialRequests || r.notes) && (
           <>
             <SectionHeader title="Notes" />
@@ -196,12 +230,12 @@ export default function ReservationScreen() {
           </>
         )}
 
-        {(canNoShow || r.canCancel) && (
+        {(canNoShow || canCancel) && (
           <View style={{ gap: space.sm, marginTop: space.md }}>
             {canNoShow && (
               <Button title="Mark no-show" variant="secondary" onPress={confirmNoShow} disabled={action.isPending} />
             )}
-            {r.canCancel && (
+            {canCancel && (
               <Button
                 title="Cancel booking"
                 variant="ghost"
@@ -220,6 +254,23 @@ export default function ReservationScreen() {
         </View>
       )}
 
+      {!canManage && canCancel && (
+        <CancelSheet
+          visible={cancelling}
+          onClose={() => setCancelling(false)}
+          busy={action.isPending}
+          onCancel={(reason) =>
+            action.mutate(() => reservationsApi.cancel(r.id, reason), {
+              onSuccess: () => {
+                setCancelling(false);
+                toast.show('Booking cancelled');
+              },
+              onError: (e) => Alert.alert('Could not cancel', errorText(e)),
+            })
+          }
+        />
+      )}
+
       {canPay && (
         <Sheet
           visible={paying}
@@ -234,12 +285,61 @@ export default function ReservationScreen() {
   );
 }
 
-function Fact({ icon, text }: { icon: { ios: IosSymbol; android: AndroidSymbol }; text: string }) {
+/** Where the guest is going: address (opens maps), times, and the hotel's phone */
+function HotelCard({ hotelId }: { hotelId: number }) {
+  const { data: hotel } = useHotelDetail(hotelId);
+  if (!hotel) return null;
+  const address = [hotel.address, hotel.city, hotel.country].filter(Boolean).join(', ');
+  return (
+    <>
+      <SectionHeader title="The hotel" />
+      <Card style={{ gap: space.sm }}>
+        <Text variant="headline">{hotel.name}</Text>
+        <Fact
+          icon={{ ios: 'mappin.and.ellipse', android: 'location_on' }}
+          text={address}
+          onPress={() =>
+            void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`)
+          }
+        />
+        {hotel.checkInTime && hotel.checkOutTime && (
+          <Fact
+            icon={{ ios: 'clock', android: 'schedule' }}
+            text={`Check-in from ${hotel.checkInTime.slice(0, 5)} · Check-out by ${hotel.checkOutTime.slice(0, 5)}`}
+          />
+        )}
+        {!!hotel.phoneNumber && (
+          <Fact
+            icon={{ ios: 'phone', android: 'call' }}
+            text={hotel.phoneNumber}
+            onPress={() => void Linking.openURL(`tel:${hotel.phoneNumber!.replace(/[^\d+]/g, '')}`)}
+          />
+        )}
+      </Card>
+    </>
+  );
+}
+
+function Fact({
+  icon,
+  text,
+  onPress,
+}: {
+  icon: { ios: IosSymbol; android: AndroidSymbol };
+  text: string;
+  /** Makes the text a link, e.g. to maps or the phone */
+  onPress?: () => void;
+}) {
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
       <Icon ios={icon.ios} android={icon.android} size={17} color={colors.textMuted} />
-      <Text variant="body" style={{ flex: 1 }}>
+      <Text
+        variant="body"
+        style={{ flex: 1, color: onPress ? colors.primary : colors.text }}
+        onPress={onPress}
+        accessibilityRole={onPress ? 'link' : undefined}
+      >
         {text}
       </Text>
     </View>

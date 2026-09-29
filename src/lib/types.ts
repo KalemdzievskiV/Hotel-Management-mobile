@@ -23,15 +23,40 @@ export interface AuthUser {
 export interface Hotel {
   id: number;
   name: string;
+  description?: string | null;
   address: string;
   city: string;
   country: string;
+  postalCode?: string | null;
   stars: number;
-  phoneNumber?: string;
+  rating?: number;
+  totalReviews?: number;
+  /** Comma-separated, e.g. "WiFi, Parking, Pool" */
+  amenities?: string | null;
+  phoneNumber?: string | null;
+  email?: string | null;
+  website?: string | null;
   checkInTime?: string;
   checkOutTime?: string;
   totalRooms?: number;
 }
+
+/** The signed-in user's own guest profile (GET/PUT /Guests/me) */
+export interface GuestProfile {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  dateOfBirth?: string | null;
+  nationality?: string | null;
+  address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+}
+
+export type ProfileUpdate = Omit<GuestProfile, 'id' | 'email'>;
 
 export enum BookingType {
   Daily = 0,
@@ -85,6 +110,13 @@ export interface Reservation {
   canCheckIn?: boolean;
   canCheckOut?: boolean;
   canCancel?: boolean;
+  /** Server-stamped (UTC): read with parseServerTime */
+  createdAt?: string;
+  confirmedAt?: string | null;
+  checkedInAt?: string | null;
+  checkedOutAt?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
   hotelName?: string;
   roomNumber?: string;
   guestName?: string;
@@ -166,6 +198,19 @@ export enum RoomType {
   Accessible = 10,
 }
 
+export const RoomTypeLabels: Record<RoomType, string> = {
+  [RoomType.Single]: 'Single room',
+  [RoomType.Double]: 'Double room',
+  [RoomType.Twin]: 'Twin room',
+  [RoomType.Triple]: 'Triple room',
+  [RoomType.Suite]: 'Suite',
+  [RoomType.Deluxe]: 'Deluxe room',
+  [RoomType.Presidential]: 'Presidential suite',
+  [RoomType.Studio]: 'Studio',
+  [RoomType.Family]: 'Family room',
+  [RoomType.Accessible]: 'Accessible room',
+};
+
 export interface Room {
   id: number;
   hotelId: number;
@@ -177,6 +222,26 @@ export interface Room {
   isActive: boolean;
   lastCleaned?: string | null;
   notes?: string | null;
+  pricePerNight?: number;
+  allowsShortStay?: boolean;
+  shortStayHourlyRate?: number | null;
+  minimumShortStayHours?: number | null;
+  maximumShortStayHours?: number | null;
+  description?: string | null;
+  /** Comma-separated */
+  amenities?: string | null;
+  bedType?: string | null;
+  areaSqM?: number | null;
+  viewType?: string | null;
+  hasBalcony?: boolean;
+  hasBathtub?: boolean;
+}
+
+/** GET /Reservations/available-rooms */
+export interface AvailableRooms {
+  hotelId: number;
+  totalAvailable: number;
+  rooms: Room[];
 }
 
 export enum HousekeepingTaskType {
